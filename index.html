@@ -90,7 +90,19 @@
   <!-- ============ 탭: 메인 ============ -->
   <div id="tab-main" class="tab-panel space-y-5">
 
-    <!-- KPI cards -->
+    <!-- 목적별 필터 -->
+    <section class="bg-white border border-neutral-200 rounded-xl shadow-sm p-3 flex flex-wrap items-center gap-3">
+      <span class="text-xs font-bold text-neutral-400 pl-1">목적별 필터</span>
+      <div id="mainObjectiveFilter" class="inline-flex flex-wrap bg-neutral-100 rounded-lg p-1 gap-1">
+        <button data-objective="all" class="groupby-btn active">전체</button>
+        <button data-objective="conversion" class="groupby-btn">전환</button>
+        <button data-objective="content_view" class="groupby-btn">콘텐츠조회</button>
+        <button data-objective="traffic" class="groupby-btn">트래픽</button>
+        <button data-objective="profile_visit" class="groupby-btn">프로필방문</button>
+      </div>
+    </section>
+
+    <!-- KPI cards: 하나의 카드 박스 안에서 Hook Rate / Hold Rate 만 줄바꿈되어 표시됩니다 -->
     <section id="kpiGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-px bg-neutral-200 border border-neutral-200 rounded-xl overflow-hidden">
       <!-- injected by JS -->
     </section>
@@ -174,7 +186,7 @@
         <div class="text-xs text-neutral-400">선택 기간 내 지출이 발생한 항목만 표시 · 컬럼 헤더 클릭 시 정렬</div>
       </div>
       <div class="overflow-x-auto p-4 sm:p-5">
-        <table class="w-full text-sm border-collapse min-w-[1320px]">
+        <table class="w-full text-sm border-collapse min-w-[1420px]">
           <thead>
             <tr class="text-[11px] uppercase tracking-wide text-neutral-400 border-b border-neutral-200">
               <th class="text-left font-bold py-2 pr-3 sortable whitespace-nowrap" data-key="campaign_name">캠페인</th>
@@ -188,6 +200,7 @@
               <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="revenue">매출액</th>
               <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="roas">ROAS</th>
               <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="cpa">CPA</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="cvr">CVR</th>
               <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="hookRate">Hook Rate</th>
               <th class="text-right font-bold py-2 pl-2 sortable whitespace-nowrap" data-key="holdRate">Hold Rate</th>
             </tr>
@@ -246,7 +259,8 @@ document.getElementById("tableNameLabel").textContent = TABLE_NAME;
 
 const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const METRIC_DEFS = [
+// 메인 KPI 카드 그리드 (11개) — xl:grid-cols-6 기준 2줄로 정렬됩니다.
+const KPI_MAIN_METRICS = [
   { key: "spend",       label: "지출액",       fmt: fmtWon },
   { key: "impressions", label: "노출수",       fmt: fmtInt },
   { key: "clicks",      label: "클릭수",       fmt: fmtInt },
@@ -257,9 +271,14 @@ const METRIC_DEFS = [
   { key: "revenue",     label: "매출액",       fmt: fmtWon },
   { key: "roas",        label: "ROAS",        fmt: fmtRoasPct },
   { key: "cpa",         label: "CPA",         fmt: fmtWon },
+  { key: "cvr",         label: "CVR",         fmt: fmtPct },
+];
+// Hook Rate / Hold Rate 는 열이 맞지 않아 별도의 카드 줄로 분리했습니다.
+const KPI_RATE_METRICS = [
   { key: "hookRate",    label: "Hook Rate",   fmt: fmtPct },
   { key: "holdRate",    label: "Hold Rate",   fmt: fmtPct },
 ];
+const METRIC_DEFS = [...KPI_MAIN_METRICS, ...KPI_RATE_METRICS];
 
 /* 캠페인명 키워드 기반 목적 분류 — 테이블에 별도 objective 컬럼이 없어 이름으로 추정합니다. */
 const OBJECTIVE_RULES = [
@@ -291,6 +310,9 @@ let sortState = { key: "spend", dir: "desc" };
 let viewMode = "all";     // "all" | "objective" | "product"
 let searchQuery = "";
 let expandedGroups = new Set(); // 아코디언으로 펼쳐진 그룹 key ("objective"/"product" 모드에서만 사용)
+
+// [메인] 탭 상태
+let mainObjectiveFilter = "all"; // "all" | "conversion" | "traffic" | "content_view" | "profile_visit"
 
 /* ---------------- formatting ---------------- */
 
@@ -375,23 +397,33 @@ function deriveRatios(agg) {
     ctr: agg.impressions ? (agg.clicks / agg.impressions) * 100 : 0,
     cpc: agg.clicks ? agg.spend / agg.clicks : null,
     cpm: agg.impressions ? (agg.spend / agg.impressions) * 1000 : null,
+    cvr: agg.clicks ? (agg.purchases / agg.clicks) * 100 : 0,
     roas: agg.spend ? agg.revenue / agg.spend : null,
     cpa: agg.purchases ? agg.spend / agg.purchases : null,
     hookRate: agg.impressions ? (agg.video3s / agg.impressions) * 100 : 0,
     holdRate: agg.video3s ? (agg.videoP100 / agg.video3s) * 100 : 0,
   };
 }
-function rowsInRange(start, end) {
-  return ALL_ROWS.filter(r => r.date >= start && r.date <= end);
+// objectiveFilter: "all"/undefined = 전체, 그 외는 OBJECTIVE_RULES key ("__other__" 포함) — [메인] 탭의 목적별 필터 전용
+function rowsInRange(start, end, objectiveFilter) {
+  let rows = ALL_ROWS.filter(r => r.date >= start && r.date <= end);
+  if (objectiveFilter && objectiveFilter !== "all") {
+    rows = rows.filter(r => {
+      const rule = classifyObjective(r.campaign_name);
+      const key = rule ? rule.key : "__other__";
+      return key === objectiveFilter;
+    });
+  }
+  return rows;
 }
-function totalsForRange(start, end) {
-  const rows = rowsInRange(start, end);
+function totalsForRange(start, end, objectiveFilter) {
+  const rows = rowsInRange(start, end, objectiveFilter);
   const agg = emptyAgg();
   rows.forEach(r => addRow(agg, r));
   return deriveRatios(agg);
 }
-function dailyTotalsForRange(start, end) {
-  const rows = rowsInRange(start, end);
+function dailyTotalsForRange(start, end, objectiveFilter) {
+  const rows = rowsInRange(start, end, objectiveFilter);
   const byDate = {};
   rows.forEach(r => {
     if (!byDate[r.date]) byDate[r.date] = emptyAgg();
@@ -423,8 +455,8 @@ function campaignTotalsForRange(start, end) {
 
 // 목적별 / 제품별 그룹 집계 ("묶어보기" 보기) — 그룹 내 모든 캠페인의 원시값을 SUM 한 뒤
 // CTR/CPC/CPM/ROAS/CPA/Hook·Hold Rate 를 그 합산값 기준으로 다시 계산합니다.
-function groupedTotalsForRange(start, end, mode) {
-  const rows = rowsInRange(start, end);
+function groupedTotalsForRange(start, end, mode, objectiveFilter) {
+  const rows = rowsInRange(start, end, objectiveFilter);
   const groups = {};
   rows.forEach(r => {
     let key, label;
@@ -482,18 +514,26 @@ function applySearch(rows) {
 
 /* ---------------- rendering: KPI cards ---------------- */
 
+function makeKpiCell(def) {
+  const cell = document.createElement("div");
+  cell.className = "bg-white p-4 flex flex-col gap-1";
+  cell.innerHTML = `
+    <div class="text-[12px] text-neutral-500 font-medium">${def.label}</div>
+    <div class="num text-[19px] font-bold" data-kpi="${def.key}">–</div>
+  `;
+  return cell;
+}
+
 function buildKpiGrid() {
   const grid = document.getElementById("kpiGrid");
   grid.innerHTML = "";
-  METRIC_DEFS.forEach(def => {
-    const cell = document.createElement("div");
-    cell.className = "bg-white p-4 flex flex-col gap-1";
-    cell.innerHTML = `
-      <div class="text-[12px] text-neutral-500 font-medium">${def.label}</div>
-      <div class="num text-[19px] font-bold" data-kpi="${def.key}">–</div>
-    `;
-    grid.appendChild(cell);
-  });
+  KPI_MAIN_METRICS.forEach(def => grid.appendChild(makeKpiCell(def)));
+  // Hook Rate / Hold Rate 는 같은 카드 박스 안에서 다음 줄로 자연스럽게 줄바꿈되도록
+  // 전체 폭 스페이서를 넣어 강제로 새 행에서 시작하게 합니다 (별도 박스로 분리하지 않음).
+  const lineBreak = document.createElement("div");
+  lineBreak.className = "col-span-full h-0";
+  grid.appendChild(lineBreak);
+  KPI_RATE_METRICS.forEach(def => grid.appendChild(makeKpiCell(def)));
 }
 
 function renderKpis(totals) {
@@ -728,7 +768,7 @@ function renderCtrChart(daily) {
 /* ---------------- rendering: chart 4 (제품별 성과 비교: 지출액 vs 매출액) ---------------- */
 
 function renderProductCompareChart(start, end) {
-  const rows = groupedTotalsForRange(start, end, "product").sort((a, b) => b.spend - a.spend);
+  const rows = groupedTotalsForRange(start, end, "product", mainObjectiveFilter).sort((a, b) => b.spend - a.spend);
   const ctx = document.getElementById("productChart").getContext("2d");
 
   const data = {
@@ -820,7 +860,7 @@ function renderCampaignTable(start, end) {
   body.innerHTML = "";
 
   if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="13" class="text-center text-neutral-400 text-sm py-10">조건에 맞는 데이터가 없습니다.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="14" class="text-center text-neutral-400 text-sm py-10">조건에 맞는 데이터가 없습니다.</td></tr>`;
     return;
   }
 
@@ -845,6 +885,7 @@ function renderCampaignTable(start, end) {
       <td class="${numCls}">${fmtWon(r.revenue)}</td>
       <td class="${numCls}">${fmtRoasPct(r.roas)}</td>
       <td class="${numCls}">${fmtWon(r.cpa)}</td>
+      <td class="${numCls}">${fmtPct(r.cvr)}</td>
       <td class="${numCls}">${fmtPct(r.hookRate)}</td>
       <td class="${lastCls}">${fmtPct(r.holdRate)}</td>
     `;
@@ -872,7 +913,7 @@ function renderCampaignTable(start, end) {
       if (!children.length) {
         const emptyTr = document.createElement("tr");
         emptyTr.className = "border-b border-neutral-100 bg-gray-50";
-        emptyTr.innerHTML = `<td colspan="13" class="py-2 pl-8 text-left text-neutral-400 text-xs whitespace-nowrap">하위 캠페인 데이터가 없습니다.</td>`;
+        emptyTr.innerHTML = `<td colspan="14" class="py-2 pl-8 text-left text-neutral-400 text-xs whitespace-nowrap">하위 캠페인 데이터가 없습니다.</td>`;
         body.appendChild(emptyTr);
       } else {
         children.forEach(c => {
@@ -945,6 +986,17 @@ document.getElementById("campaignBody").addEventListener("click", (e) => {
   renderCampaignTable(currentStart, currentEnd);
 });
 
+/* ---------------- [메인] 탭: 목적별 필터 wiring ---------------- */
+
+document.getElementById("mainObjectiveFilter").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-objective]");
+  if (!btn) return;
+  document.querySelectorAll("#mainObjectiveFilter button").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  mainObjectiveFilter = btn.dataset.objective;
+  if (currentStart && currentEnd) renderAll(currentStart, currentEnd);
+});
+
 /* ---------------- master render ---------------- */
 
 function renderAll(start, end) {
@@ -957,8 +1009,8 @@ function renderAll(start, end) {
   document.getElementById("rangeSummary").textContent =
     `${fmtDateKR(start)} ~ ${fmtDateKR(end)} · ${nDays}일 · 데이터 보유 기간 ${fmtDateKR(MIN_DATE)} ~ ${fmtDateKR(MAX_DATE)}`;
 
-  const totals = totalsForRange(start, end);
-  const daily = dailyTotalsForRange(start, end);
+  const totals = totalsForRange(start, end, mainObjectiveFilter);
+  const daily = dailyTotalsForRange(start, end, mainObjectiveFilter);
   renderKpis(totals);
   renderTrendChart(daily);
   renderCpaChart(daily);
