@@ -213,18 +213,60 @@
   </div>
 
   <!-- ============ 탭: 소재 ============ -->
-  <div id="tab-creative" class="tab-panel hidden">
-    <section class="bg-white border border-neutral-200 rounded-xl shadow-sm py-24 px-6 flex flex-col items-center justify-center text-center gap-3">
-      <div class="w-12 h-12 rounded-full bg-neutral-100 flex items-center justify-center text-2xl">🎬</div>
-      <h2 class="text-base font-bold text-neutral-800">소재별 성과 대시보드 준비 중</h2>
-      <p class="text-sm text-neutral-500 max-w-md leading-relaxed">
-        소재(이미지·동영상) 단위 지표 연동을 준비하고 있습니다. 연동되면 소재별 지출액, Hook Rate, Hold Rate, 썸네일 미리보기 등을 이 화면에서 확인할 수 있습니다.
-      </p>
+  <div id="tab-creative" class="tab-panel hidden space-y-5">
+
+    <!-- Group-by 토글 + 검색 + 서브 필터(크로스 필터) -->
+    <section class="bg-white border border-neutral-200 rounded-xl shadow-sm p-3 space-y-3">
+      <div class="flex flex-wrap items-center gap-3">
+        <div id="creativeGroupByToggle" class="inline-flex flex-wrap bg-neutral-100 rounded-lg p-1 gap-1">
+          <button data-mode="all" class="groupby-btn active">전체 소재</button>
+          <button data-mode="objective" class="groupby-btn">캠페인 목적별</button>
+          <button data-mode="product" class="groupby-btn">제품별</button>
+        </div>
+        <input id="creativeSearch" type="text" placeholder="소재명 또는 소재코드로 검색"
+          class="flex-1 min-w-[220px] text-sm border border-neutral-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
+      </div>
+      <div id="creativeSubFilterRow" class="hidden flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-3">
+        <span id="creativeSubFilterLabel" class="text-xs font-bold text-neutral-400 pl-1">필터</span>
+        <div id="creativeSubFilter" class="inline-flex flex-wrap bg-neutral-100 rounded-lg p-1 gap-1"></div>
+      </div>
     </section>
+
+    <!-- Creative table -->
+    <section class="bg-white border border-neutral-200 rounded-xl shadow-sm">
+      <div class="flex items-baseline justify-between flex-wrap gap-2 p-4 sm:p-5 pb-0">
+        <h2 id="creativeTableTitle" class="text-[15px] font-bold">소재별 성과</h2>
+        <div class="text-xs text-neutral-400">선택 기간 내 지출이 발생한 소재만 표시 · 컬럼 헤더 클릭 시 정렬 · Hook/Hold Rate는 소재 단위 동영상 조회 데이터가 없어 “–”로 표시됩니다</div>
+      </div>
+      <div class="overflow-x-auto p-4 sm:p-5">
+        <table class="w-full text-sm border-collapse min-w-[1420px]">
+          <thead>
+            <tr class="text-[11px] uppercase tracking-wide text-neutral-400 border-b border-neutral-200">
+              <th class="text-left font-bold py-2 pr-3 sortable whitespace-nowrap" data-key="name">소재</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="spend">지출액</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="impressions">노출수</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="clicks">클릭수</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="ctr">CTR</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="cpc">CPC</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="cpm">CPM</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="purchases">구매전환건수</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="revenue">매출액</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="roas">ROAS</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="cpa">CPA</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="cvr">CVR</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="hookRate">Hook Rate</th>
+              <th class="text-right font-bold py-2 pl-2 sortable whitespace-nowrap" data-key="holdRate">Hold Rate</th>
+            </tr>
+          </thead>
+          <tbody id="creativeBody"></tbody>
+        </table>
+      </div>
+    </section>
+
   </div>
 
   <footer class="text-[11.5px] text-neutral-400 leading-relaxed pt-1 pb-6">
-    데이터 출처: Supabase <span class="num" id="tableNameLabel"></span> 테이블 (Meta Ads API로 수집된 캠페인 성과 데이터) · Hook Rate = 3초 동영상 재생수 ÷ 노출수, Hold Rate = 동영상 100% 완료 조회수 ÷ 3초 동영상 재생수 · 페이지를 새로고침하면 Supabase의 최신 데이터를 다시 불러옵니다.
+    데이터 출처: Supabase <span class="num" id="tableNameLabel"></span> 테이블(캠페인) · <span class="num" id="adTableNameLabel"></span> 테이블(소재) (Meta Ads API로 수집) · Hook Rate = 3초 동영상 재생수 ÷ 노출수, Hold Rate = ThruPlay 건수 ÷ 3초 동영상 재생수 (소재 탭은 3초 동영상 재생수 데이터가 없어 “–”로 표시) · 페이지를 새로고침하면 Supabase의 최신 데이터를 다시 불러옵니다.
   </footer>
 
 </div>
@@ -246,6 +288,7 @@
 const SUPABASE_URL = "https://xemutoupgtdqreywucic.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_tXdluUBb2F3rd_enRUC0dA_YKWzrnX2";
 const TABLE_NAME = "meta_campaign_performance";
+const AD_TABLE_NAME = "meta_ad_performance"; // [소재] 탭 — 소재(Ad) 단위 일별 성과 데이터
 
 /* [캠페인] 탭의 "제품별 묶어보기"는 이 테이블에 별도 product 컬럼이 없어
    캠페인명에 포함된 키워드로 그룹을 나눕니다. 실제 계정의 제품/캠페인
@@ -256,6 +299,7 @@ const PRODUCT_KEYWORDS = ["비타민C", "프레시그린", "홀리 히솝", "떡
 /* ========================================================================= */
 
 document.getElementById("tableNameLabel").textContent = TABLE_NAME;
+document.getElementById("adTableNameLabel").textContent = AD_TABLE_NAME;
 
 const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -295,7 +339,8 @@ function classifyProduct(name) {
   return PRODUCT_KEYWORDS.find(k => name.includes(k)) || null;
 }
 
-let ALL_ROWS = [];      // raw rows from Supabase
+let ALL_ROWS = [];      // raw rows from Supabase (캠페인 단위)
+let ALL_AD_ROWS = [];   // raw rows from Supabase (소재/Ad 단위)
 let MIN_DATE = null;
 let MAX_DATE = null;
 let currentStart = null;
@@ -310,6 +355,15 @@ let sortState = { key: "spend", dir: "desc" };
 let viewMode = "all";     // "all" | "objective" | "product"
 let searchQuery = "";
 let expandedGroups = new Set(); // 아코디언으로 펼쳐진 그룹 key ("objective"/"product" 모드에서만 사용)
+
+// [소재] 탭 상태
+let creativeViewMode = "all";      // "all" | "objective" | "product"
+// 서브 필터(크로스 필터): "objective" 모드에서는 제품 키워드(또는 "__all__"), "product" 모드에서는
+// OBJECTIVE_RULES key(또는 "__all__")를 담습니다. "all" 모드에서는 사용하지 않습니다.
+let creativeSubFilter = "__all__";
+let creativeSearchQuery = "";
+let expandedCreativeGroups = new Set();
+let creativeSortState = { key: "spend", dir: "desc" };
 
 // [메인] 탭 상태
 let mainObjectiveFilter = "all"; // "all" | "conversion" | "traffic" | "content_view" | "profile_visit"
@@ -364,7 +418,25 @@ async function fetchAllRows() {
   while (true) {
     const { data, error } = await sbClient
       .from(TABLE_NAME)
-      .select("date, campaign_id, campaign_name, spend, impressions, clicks, video_3sec_views, video_p100_views, purchases, purchase_value")
+      .select("date, campaign_id, campaign_name, spend, impressions, clicks, video_3sec_views, video_thruplay_views, purchases, purchase_value")
+      .order("date", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
+async function fetchAllAdRows() {
+  const pageSize = 1000;
+  let from = 0;
+  let all = [];
+  while (true) {
+    const { data, error } = await sbClient
+      .from(AD_TABLE_NAME)
+      .select("date, campaign_id, campaign_name, adset_id, adset_name, ad_id, ad_name, spend, impressions, clicks, purchases, purchase_value")
       .order("date", { ascending: true })
       .range(from, from + pageSize - 1);
     if (error) throw error;
@@ -378,19 +450,20 @@ async function fetchAllRows() {
 /* ---------------- aggregation ---------------- */
 
 function emptyAgg() {
-  return { spend: 0, impressions: 0, clicks: 0, video3s: 0, videoP100: 0, purchases: 0, revenue: 0 };
+  return { spend: 0, impressions: 0, clicks: 0, video3s: 0, thruplay: 0, purchases: 0, revenue: 0 };
 }
 function addRow(agg, r) {
   agg.spend += Number(r.spend) || 0;
   agg.impressions += Number(r.impressions) || 0;
   agg.clicks += Number(r.clicks) || 0;
   agg.video3s += Number(r.video_3sec_views) || 0;
-  agg.videoP100 += Number(r.video_p100_views) || 0;
+  agg.thruplay += Number(r.video_thruplay_views) || 0;
   agg.purchases += Number(r.purchases) || 0;
   agg.revenue += Number(r.purchase_value) || 0;
 }
 // CTR/CPC/CPM/ROAS/CPA/Hook·Hold Rate 는 전부 합산된 원시값(SUM)에서 계산합니다.
 // (개별 캠페인 비율의 단순 평균이 아닙니다 — 그룹 합산 시에도 동일하게 적용됩니다.)
+// Hold Rate = (ThruPlay 건수 / 3초 영상 재생수) * 100
 function deriveRatios(agg) {
   return {
     ...agg,
@@ -401,7 +474,7 @@ function deriveRatios(agg) {
     roas: agg.spend ? agg.revenue / agg.spend : null,
     cpa: agg.purchases ? agg.spend / agg.purchases : null,
     hookRate: agg.impressions ? (agg.video3s / agg.impressions) * 100 : 0,
-    holdRate: agg.video3s ? (agg.videoP100 / agg.video3s) * 100 : 0,
+    holdRate: agg.video3s ? (agg.thruplay / agg.video3s) * 100 : 0,
   };
 }
 // objectiveFilter: "all"/undefined = 전체, 그 외는 OBJECTIVE_RULES key ("__other__" 포함) — [메인] 탭의 목적별 필터 전용
@@ -510,6 +583,130 @@ function applySearch(rows) {
   const q = searchQuery.trim().toLowerCase();
   if (!q) return rows;
   return rows.filter(r => (String(r.campaign_name) + " " + String(r.id)).toLowerCase().includes(q));
+}
+
+/* ---------------- aggregation: [소재] 탭 (meta_ad_performance, ad 단위) ---------------- */
+
+// 소재(Ad) 단위 데이터에는 동영상 조회 지표(video_3sec_views 등)가 없어
+// Hook Rate / Hold Rate 는 항상 null("–")로 표시합니다 (0.0%로 표시하면 "재생은 됐지만 0%" 로
+// 오인될 수 있어, 아예 값이 없음을 나타내는 "–" 를 사용합니다).
+function emptyAdAgg() {
+  return { spend: 0, impressions: 0, clicks: 0, purchases: 0, revenue: 0 };
+}
+function addAdRow(agg, r) {
+  agg.spend += Number(r.spend) || 0;
+  agg.impressions += Number(r.impressions) || 0;
+  agg.clicks += Number(r.clicks) || 0;
+  agg.purchases += Number(r.purchases) || 0;
+  agg.revenue += Number(r.purchase_value) || 0;
+}
+function deriveAdRatios(agg) {
+  return {
+    ...agg,
+    ctr: agg.impressions ? (agg.clicks / agg.impressions) * 100 : 0,
+    cpc: agg.clicks ? agg.spend / agg.clicks : null,
+    cpm: agg.impressions ? (agg.spend / agg.impressions) * 1000 : null,
+    cvr: agg.clicks ? (agg.purchases / agg.clicks) * 100 : 0,
+    roas: agg.spend ? agg.revenue / agg.spend : null,
+    cpa: agg.purchases ? agg.spend / agg.purchases : null,
+    hookRate: null,
+    holdRate: null,
+  };
+}
+function adRowsInRange(start, end) {
+  return ALL_AD_ROWS.filter(r => r.date >= start && r.date <= end);
+}
+
+// 서브 필터(크로스 필터) 적용 — 분류 기준은 소재명이 아닌 campaign_name 키워드입니다.
+// "objective" 모드일 때는 제품 서브 필터를, "product" 모드일 때는 목적 서브 필터를 추가로 적용합니다.
+function applyCreativeCrossFilter(rows) {
+  if (creativeSubFilter === "__all__") return rows;
+  if (creativeViewMode === "objective") {
+    return rows.filter(r => (classifyProduct(r.campaign_name) || "__other__") === creativeSubFilter);
+  }
+  if (creativeViewMode === "product") {
+    return rows.filter(r => {
+      const rule = classifyObjective(r.campaign_name);
+      return (rule ? rule.key : "__other__") === creativeSubFilter;
+    });
+  }
+  return rows;
+}
+function creativeRowsInRange(start, end) {
+  return applyCreativeCrossFilter(adRowsInRange(start, end));
+}
+
+// 개별 소재 단위 집계 ("전체 소재" 보기)
+function adTotalsForRange(start, end) {
+  const rows = creativeRowsInRange(start, end);
+  const byAd = {};
+  rows.forEach(r => {
+    const id = r.ad_id;
+    if (!byAd[id]) byAd[id] = { id, name: r.ad_name, agg: emptyAdAgg() };
+    addAdRow(byAd[id].agg, r);
+  });
+  return Object.values(byAd)
+    .map(a => ({ id: a.id, name: a.name, itemCount: 1, ...deriveAdRatios(a.agg) }))
+    .filter(a => a.spend > 0);
+}
+
+// 캠페인 목적별 / 제품별 그룹 집계 ("묶어보기" 보기) — 분류 기준은 campaign_name 키워드입니다.
+function groupedAdTotalsForRange(start, end, mode) {
+  const rows = creativeRowsInRange(start, end);
+  const groups = {};
+  rows.forEach(r => {
+    let key, label;
+    if (mode === "objective") {
+      const rule = classifyObjective(r.campaign_name);
+      key = rule ? rule.key : "__other__";
+      label = rule ? rule.label : "기타(미분류)";
+    } else {
+      const kw = classifyProduct(r.campaign_name);
+      key = kw || "__other__";
+      label = kw || "기타(미분류)";
+    }
+    if (!groups[key]) groups[key] = { key, label, agg: emptyAdAgg(), adIds: new Set() };
+    addAdRow(groups[key].agg, r);
+    groups[key].adIds.add(r.ad_id);
+  });
+  return Object.values(groups)
+    .map(g => ({ id: g.key, name: g.label, itemCount: g.adIds.size, ...deriveAdRatios(g.agg) }))
+    .filter(g => g.spend > 0);
+}
+
+// 아코디언 드릴다운: 특정 그룹(key)에 속한 개별 소재들의 상세 성과 (목적별/제품별 묶어보기 모드 전용)
+// — 서브 필터가 적용된 상태라면 그 필터도 함께 반영됩니다.
+function adRowsForGroup(start, end, mode, groupKey) {
+  const rows = creativeRowsInRange(start, end).filter(r => {
+    if (mode === "objective") {
+      const rule = classifyObjective(r.campaign_name);
+      return (rule ? rule.key : "__other__") === groupKey;
+    }
+    const kw = classifyProduct(r.campaign_name);
+    return (kw || "__other__") === groupKey;
+  });
+  const byAd = {};
+  rows.forEach(r => {
+    const id = r.ad_id;
+    if (!byAd[id]) byAd[id] = { id, name: r.ad_name, agg: emptyAdAgg() };
+    addAdRow(byAd[id].agg, r);
+  });
+  return Object.values(byAd)
+    .map(a => ({ id: a.id, name: a.name, itemCount: 1, ...deriveAdRatios(a.agg) }))
+    .filter(a => a.spend > 0)
+    .sort((a, b) => b.spend - a.spend);
+}
+
+function currentCreativeTableRows(start, end) {
+  if (creativeViewMode === "objective") return groupedAdTotalsForRange(start, end, "objective");
+  if (creativeViewMode === "product") return groupedAdTotalsForRange(start, end, "product");
+  return adTotalsForRange(start, end);
+}
+
+function applyCreativeSearch(rows) {
+  const q = creativeSearchQuery.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter(r => (String(r.name) + " " + String(r.id)).toLowerCase().includes(q));
 }
 
 /* ---------------- rendering: KPI cards ---------------- */
@@ -933,7 +1130,7 @@ function escapeHtml(s) {
   return div.innerHTML;
 }
 
-document.querySelectorAll("th.sortable").forEach(th => {
+document.querySelectorAll("#tab-campaign th.sortable").forEach(th => {
   th.addEventListener("click", () => {
     const key = th.dataset.key;
     if (sortState.key === key) {
@@ -942,6 +1139,156 @@ document.querySelectorAll("th.sortable").forEach(th => {
       sortState = { key, dir: key === "campaign_name" ? "asc" : "desc" };
     }
     renderCampaignTable(currentStart, currentEnd);
+  });
+});
+
+/* ---------------- rendering: [소재] 탭 테이블 ---------------- */
+
+function sortCreativeRows(rows) {
+  const { key, dir } = creativeSortState;
+  const mul = dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    let av = a[key], bv = b[key];
+    if (key === "name") {
+      return mul * String(av).localeCompare(String(bv), "ko");
+    }
+    av = av === null || av === undefined || !isFinite(av) ? -Infinity : av;
+    bv = bv === null || bv === undefined || !isFinite(bv) ? -Infinity : bv;
+    return mul * (av - bv);
+  });
+}
+
+function updateCreativeTableChrome() {
+  const headerLabel = creativeViewMode === "objective" ? "캠페인 목적"
+    : creativeViewMode === "product" ? "제품"
+    : "소재";
+  document.querySelector('#tab-creative th[data-key="name"]').textContent = headerLabel;
+  const titleMap = {
+    all: "소재별 성과",
+    objective: "캠페인 목적별 성과 (묶어보기)",
+    product: "제품별 성과 (묶어보기)",
+  };
+  document.getElementById("creativeTableTitle").textContent = titleMap[creativeViewMode];
+}
+
+// 서브 필터(크로스 필터) UI — "캠페인 목적별" 모드에서는 제품 버튼을, "제품별" 모드에서는
+// 목적 버튼을 아래에 표시합니다. "전체 소재" 모드에서는 서브 필터 행을 숨깁니다.
+function makeSubFilterBtn(key, label) {
+  const btn = document.createElement("button");
+  btn.dataset.subfilter = key;
+  btn.className = "groupby-btn" + (creativeSubFilter === key ? " active" : "");
+  btn.textContent = label;
+  return btn;
+}
+function updateCreativeSubFilterUI() {
+  const row = document.getElementById("creativeSubFilterRow");
+  const label = document.getElementById("creativeSubFilterLabel");
+  const container = document.getElementById("creativeSubFilter");
+  container.innerHTML = "";
+
+  if (creativeViewMode === "objective") {
+    row.classList.remove("hidden");
+    label.textContent = "제품별 필터";
+    container.appendChild(makeSubFilterBtn("__all__", "전체"));
+    PRODUCT_KEYWORDS.forEach(kw => container.appendChild(makeSubFilterBtn(kw, kw)));
+  } else if (creativeViewMode === "product") {
+    row.classList.remove("hidden");
+    label.textContent = "캠페인 목적별 필터";
+    container.appendChild(makeSubFilterBtn("__all__", "전체"));
+    OBJECTIVE_RULES.forEach(rule => container.appendChild(makeSubFilterBtn(rule.key, rule.label)));
+  } else {
+    row.classList.add("hidden");
+  }
+}
+
+function renderCreativeTable(start, end) {
+  const body = document.getElementById("creativeBody");
+  body.innerHTML = "";
+
+  if (!ALL_AD_ROWS.length) {
+    body.innerHTML = `<tr><td colspan="14" class="text-center text-neutral-400 text-sm py-10">${escapeHtml(AD_TABLE_NAME)} 테이블에서 소재 데이터를 불러오지 못했습니다. 테이블/RLS 설정을 확인해주세요.</td></tr>`;
+    return;
+  }
+
+  const rows = sortCreativeRows(applyCreativeSearch(currentCreativeTableRows(start, end)));
+
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="14" class="text-center text-neutral-400 text-sm py-10">조건에 맞는 데이터가 없습니다.</td></tr>`;
+    return;
+  }
+
+  const grouped = creativeViewMode !== "all";
+
+  function rowCells(r, opts) {
+    const nameCell = opts.isChild
+      ? `<td class="py-2 pr-3 pl-8 text-left text-neutral-600 max-w-[320px] truncate whitespace-nowrap" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</td>`
+      : `<td class="py-2.5 pr-3 text-left font-medium max-w-[320px] truncate whitespace-nowrap" title="${escapeHtml(r.name)}">${opts.nameLabel}</td>`;
+    const pad = opts.isChild ? "py-2" : "py-2.5";
+    const numCls = opts.isChild ? `${pad} px-2 text-right num whitespace-nowrap text-neutral-500` : `${pad} px-2 text-right num whitespace-nowrap`;
+    const lastCls = opts.isChild ? `${pad} pl-2 text-right num whitespace-nowrap text-neutral-500` : `${pad} pl-2 text-right num whitespace-nowrap`;
+    return `
+      ${nameCell}
+      <td class="${numCls}">${fmtWon(r.spend)}</td>
+      <td class="${numCls}">${fmtInt(r.impressions)}</td>
+      <td class="${numCls}">${fmtInt(r.clicks)}</td>
+      <td class="${numCls}">${fmtPct(r.ctr)}</td>
+      <td class="${numCls}">${fmtWon(r.cpc)}</td>
+      <td class="${numCls}">${fmtWon(r.cpm)}</td>
+      <td class="${numCls}">${fmtInt(r.purchases)}</td>
+      <td class="${numCls}">${fmtWon(r.revenue)}</td>
+      <td class="${numCls}">${fmtRoasPct(r.roas)}</td>
+      <td class="${numCls}">${fmtWon(r.cpa)}</td>
+      <td class="${numCls}">${fmtPct(r.cvr)}</td>
+      <td class="${numCls}">${fmtPct(r.hookRate)}</td>
+      <td class="${lastCls}">${fmtPct(r.holdRate)}</td>
+    `;
+  }
+
+  rows.forEach(r => {
+    const groupKey = String(r.id);
+    const isExpanded = grouped && expandedCreativeGroups.has(groupKey);
+    const tr = document.createElement("tr");
+    tr.className = "border-b border-neutral-100 hover:bg-neutral-50" + (grouped ? " cursor-pointer select-none" : "");
+    if (grouped) tr.dataset.groupToggle = groupKey;
+
+    const arrow = grouped
+      ? `<span class="inline-block w-3.5 text-neutral-400 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}">▶</span> `
+      : "";
+    const nameLabel = grouped
+      ? `${arrow}${escapeHtml(r.name)} <span class="text-neutral-400 font-normal">· 소재 ${r.itemCount}개</span>`
+      : escapeHtml(r.name);
+
+    tr.innerHTML = rowCells(r, { isChild: false, nameLabel });
+    body.appendChild(tr);
+
+    if (grouped && isExpanded) {
+      const children = adRowsForGroup(start, end, creativeViewMode, groupKey);
+      if (!children.length) {
+        const emptyTr = document.createElement("tr");
+        emptyTr.className = "border-b border-neutral-100 bg-gray-50";
+        emptyTr.innerHTML = `<td colspan="14" class="py-2 pl-8 text-left text-neutral-400 text-xs whitespace-nowrap">하위 소재 데이터가 없습니다.</td>`;
+        body.appendChild(emptyTr);
+      } else {
+        children.forEach(c => {
+          const childTr = document.createElement("tr");
+          childTr.className = "border-b border-neutral-100 bg-gray-50";
+          childTr.innerHTML = rowCells(c, { isChild: true });
+          body.appendChild(childTr);
+        });
+      }
+    }
+  });
+}
+
+document.querySelectorAll("#tab-creative th.sortable").forEach(th => {
+  th.addEventListener("click", () => {
+    const key = th.dataset.key;
+    if (creativeSortState.key === key) {
+      creativeSortState.dir = creativeSortState.dir === "desc" ? "asc" : "desc";
+    } else {
+      creativeSortState = { key, dir: key === "name" ? "asc" : "desc" };
+    }
+    renderCreativeTable(currentStart, currentEnd);
   });
 });
 
@@ -986,6 +1333,49 @@ document.getElementById("campaignBody").addEventListener("click", (e) => {
   renderCampaignTable(currentStart, currentEnd);
 });
 
+/* ---------------- [소재] 탭: group-by 토글 + 서브 필터(크로스 필터) + 검색 + 아코디언 wiring ---------------- */
+
+document.getElementById("creativeGroupByToggle").addEventListener("click", (e) => {
+  const btn = e.target.closest(".groupby-btn");
+  if (!btn) return;
+  document.querySelectorAll("#creativeGroupByToggle .groupby-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  creativeViewMode = btn.dataset.mode;
+  creativeSubFilter = "__all__"; // 보기 모드를 바꾸면 서브 필터는 "전체"로 초기화합니다.
+  creativeSortState = { key: "spend", dir: "desc" };
+  expandedCreativeGroups.clear();
+  updateCreativeTableChrome();
+  updateCreativeSubFilterUI();
+  renderCreativeTable(currentStart, currentEnd);
+});
+
+// 서브 필터(크로스 필터) 버튼 클릭: "캠페인 목적별" 보기에서는 제품으로, "제품별" 보기에서는
+// 목적으로 2차 필터링합니다.
+document.getElementById("creativeSubFilter").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-subfilter]");
+  if (!btn) return;
+  document.querySelectorAll("#creativeSubFilter button").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  creativeSubFilter = btn.dataset.subfilter;
+  expandedCreativeGroups.clear();
+  renderCreativeTable(currentStart, currentEnd);
+});
+
+document.getElementById("creativeSearch").addEventListener("input", (e) => {
+  creativeSearchQuery = e.target.value;
+  renderCreativeTable(currentStart, currentEnd);
+});
+
+// 아코디언 드릴다운: 그룹 행 클릭(화살표 포함) 시 하위 소재 목록 펼치기/접기
+document.getElementById("creativeBody").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr[data-group-toggle]");
+  if (!tr) return;
+  const key = tr.dataset.groupToggle;
+  if (expandedCreativeGroups.has(key)) expandedCreativeGroups.delete(key);
+  else expandedCreativeGroups.add(key);
+  renderCreativeTable(currentStart, currentEnd);
+});
+
 /* ---------------- [메인] 탭: 목적별 필터 wiring ---------------- */
 
 document.getElementById("mainObjectiveFilter").addEventListener("click", (e) => {
@@ -1017,6 +1407,7 @@ function renderAll(start, end) {
   renderCtrChart(daily);
   renderProductCompareChart(start, end);
   renderCampaignTable(start, end);
+  renderCreativeTable(start, end);
 }
 
 /* ---------------- controls wiring (기간 필터 — 모든 탭 공통) ---------------- */
@@ -1077,8 +1468,20 @@ async function init() {
     document.getElementById("endDate").max = MAX_DATE;
 
     const campaignCount = new Set(ALL_ROWS.map(r => r.campaign_id)).size;
-    document.getElementById("statusBadge").textContent =
-      `Supabase 연결됨 · 행 ${ALL_ROWS.length.toLocaleString("ko-KR")}개 · 캠페인 ${campaignCount}개`;
+
+    // [소재] 탭 데이터는 별도 테이블(meta_ad_performance)에서 불러옵니다.
+    // 이 테이블/조회가 실패해도 메인·캠페인 탭은 정상 동작해야 하므로 별도로 감쌉니다.
+    try {
+      ALL_AD_ROWS = await fetchAllAdRows();
+    } catch (adErr) {
+      console.error(adErr);
+      ALL_AD_ROWS = [];
+    }
+    const adCount = new Set(ALL_AD_ROWS.map(r => r.ad_id)).size;
+
+    document.getElementById("statusBadge").textContent = ALL_AD_ROWS.length
+      ? `Supabase 연결됨 · 캠페인 행 ${ALL_ROWS.length.toLocaleString("ko-KR")}개(${campaignCount}개 캠페인) · 소재 행 ${ALL_AD_ROWS.length.toLocaleString("ko-KR")}개(${adCount}개 소재)`
+      : `Supabase 연결됨 · 캠페인 행 ${ALL_ROWS.length.toLocaleString("ko-KR")}개(${campaignCount}개 캠페인) · 소재 데이터 없음`;
 
     document.querySelector('.preset-btn[data-days="7"]').classList.add("active");
     const initEnd = MAX_DATE;
