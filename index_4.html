@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Meta 광고 성과 대시보드</title>
+
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Supabase JS client -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['"Noto Sans KR"', 'system-ui', '-apple-system', 'sans-serif'],
+          mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+        },
+      },
+    },
+  };
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;900&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+
+<style>
+  body { font-feature-settings: "tnum" 1; }
+  .num { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  ::-webkit-scrollbar { height: 8px; width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #d4d4d4; border-radius: 4px; }
+  .preset-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: #2563eb; }
+  #loadingOverlay { transition: opacity .2s ease; }
+  .tab-btn, .groupby-btn { padding: 8px 20px; border-radius: 7px; font-size: 14px; font-weight: 700; color: #6b7280; transition: all .15s ease; white-space: nowrap; }
+  .tab-btn:hover, .groupby-btn:hover { color: #111827; }
+  .tab-btn.active, .groupby-btn.active { background: #fff; color: #111827; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .groupby-btn { padding: 7px 16px; font-size: 13px; }
+  .tab-panel.hidden { display: none; }
+</style>
+</head>
+
+<body class="bg-neutral-50 text-neutral-900 font-sans antialiased">
+
+<div class="max-w-[1240px] mx-auto px-4 sm:px-6 py-6 space-y-5">
+
+  <!-- Header -->
+  <header class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <div class="text-[11px] font-bold tracking-widest text-blue-600 mb-1">META ADS PERFORMANCE</div>
+      <h1 class="text-2xl sm:text-[26px] font-black tracking-tight">광고 성과 대시보드</h1>
+      <p id="rangeSummary" class="text-sm text-neutral-500 mt-1">데이터를 불러오는 중…</p>
+    </div>
+    <div id="statusBadge" class="text-xs text-neutral-500 bg-white border border-neutral-200 rounded-md px-3 py-1.5 whitespace-nowrap">
+      Supabase 연결 중…
+    </div>
+  </header>
+
+  <!-- ============ 상단 공통 영역: 탭 네비게이션 + 기간 필터 ============ -->
+  <section class="bg-white border border-neutral-200 rounded-xl shadow-sm p-3 space-y-3">
+    <div id="tabNav" class="inline-flex bg-neutral-100 rounded-lg p-1 gap-1">
+      <button data-tab="main" class="tab-btn active">메인</button>
+      <button data-tab="campaign" class="tab-btn">캠페인</button>
+      <button data-tab="creative" class="tab-btn">소재</button>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 pt-3">
+      <div id="presetGroup" class="flex flex-wrap gap-1.5">
+        <button data-days="7" class="preset-btn text-sm font-medium px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-600 hover:bg-neutral-50 transition">최근 7일</button>
+        <button data-days="30" class="preset-btn text-sm font-medium px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-600 hover:bg-neutral-50 transition">최근 30일</button>
+        <button data-days="90" class="preset-btn text-sm font-medium px-3 py-1.5 rounded-lg border border-neutral-200 text-neutral-600 hover:bg-neutral-50 transition">최근 90일</button>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        <label class="flex items-center gap-1.5 text-neutral-500">시작
+          <input id="startDate" type="date" class="font-mono text-[12.5px] border border-neutral-200 rounded-md px-2 py-1.5 text-neutral-800" />
+        </label>
+        <label class="flex items-center gap-1.5 text-neutral-500">종료
+          <input id="endDate" type="date" class="font-mono text-[12.5px] border border-neutral-200 rounded-md px-2 py-1.5 text-neutral-800" />
+        </label>
+        <button id="applyRangeBtn" class="text-sm font-bold px-4 py-1.5 rounded-lg bg-neutral-900 text-white hover:bg-neutral-800 transition">조회</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 탭: 메인 ============ -->
+  <div id="tab-main" class="tab-panel space-y-5">
+
+    <!-- KPI cards -->
+    <section id="kpiGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-px bg-neutral-200 border border-neutral-200 rounded-xl overflow-hidden">
+      <!-- injected by JS -->
+    </section>
+
+    <!-- Chart 1: 지출액 / 매출액 / ROAS -->
+    <section class="bg-white border border-neutral-200 rounded-xl shadow-sm p-4 sm:p-5">
+      <div class="flex items-baseline justify-between flex-wrap gap-2 mb-3">
+        <h2 class="text-[15px] font-bold">지출액 · 매출액 · ROAS 추이</h2>
+        <div class="flex items-center gap-4 text-xs text-neutral-500">
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-blue-600 inline-block"></span>지출액</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block"></span>매출액</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>ROAS (%)</span>
+        </div>
+      </div>
+      <div class="relative h-[320px]">
+        <canvas id="trendChart"></canvas>
+      </div>
+    </section>
+
+    <!-- Chart 2 & 3: CPA 추이 / CTR 추이 (2열) -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+      <section class="bg-white border border-neutral-200 rounded-xl shadow-sm p-4 sm:p-5">
+        <div class="flex items-baseline justify-between flex-wrap gap-2 mb-3">
+          <h2 class="text-[15px] font-bold">CPA 추이</h2>
+          <div class="flex items-center gap-4 text-xs text-neutral-500">
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-violet-600 inline-block"></span>CPA (구매 1건당 지출)</span>
+          </div>
+        </div>
+        <div class="relative h-[260px]">
+          <canvas id="cpaChart"></canvas>
+        </div>
+      </section>
+
+      <section class="bg-white border border-neutral-200 rounded-xl shadow-sm p-4 sm:p-5">
+        <div class="flex items-baseline justify-between flex-wrap gap-2 mb-3">
+          <h2 class="text-[15px] font-bold">CTR 추이</h2>
+          <div class="flex items-center gap-4 text-xs text-neutral-500">
+            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-cyan-600 inline-block"></span>CTR</span>
+          </div>
+        </div>
+        <div class="relative h-[260px]">
+          <canvas id="ctrChart"></canvas>
+        </div>
+      </section>
+    </div>
+
+    <!-- Chart 4: 제품별 성과 비교 (지출액 vs 매출액) -->
+    <section class="bg-white border border-neutral-200 rounded-xl shadow-sm p-4 sm:p-5">
+      <div class="flex items-baseline justify-between flex-wrap gap-2 mb-3">
+        <h2 class="text-[15px] font-bold">제품별 성과 비교</h2>
+        <div class="flex items-center gap-4 text-xs text-neutral-500">
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-blue-600 inline-block"></span>지출액</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block"></span>매출액</span>
+        </div>
+      </div>
+      <div class="relative h-[280px]">
+        <canvas id="productChart"></canvas>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ============ 탭: 캠페인 ============ -->
+  <div id="tab-campaign" class="tab-panel hidden space-y-5">
+
+    <!-- Group-by 토글 + 검색 -->
+    <section class="bg-white border border-neutral-200 rounded-xl shadow-sm p-3 flex flex-wrap items-center gap-3">
+      <div id="groupByToggle" class="inline-flex bg-neutral-100 rounded-lg p-1 gap-1">
+        <button data-mode="all" class="groupby-btn active">전체 캠페인</button>
+        <button data-mode="objective" class="groupby-btn">목적별 묶어보기</button>
+        <button data-mode="product" class="groupby-btn">제품별 묶어보기</button>
+      </div>
+      <input id="campaignSearch" type="text" placeholder="캠페인명 또는 소재코드로 검색"
+        class="flex-1 min-w-[220px] text-sm border border-neutral-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
+    </section>
+
+    <!-- Campaign table -->
+    <section class="bg-white border border-neutral-200 rounded-xl shadow-sm">
+      <div class="flex items-baseline justify-between flex-wrap gap-2 p-4 sm:p-5 pb-0">
+        <h2 id="campaignTableTitle" class="text-[15px] font-bold">캠페인별 성과</h2>
+        <div class="text-xs text-neutral-400">선택 기간 내 지출이 발생한 항목만 표시 · 컬럼 헤더 클릭 시 정렬</div>
+      </div>
+      <div class="overflow-x-auto p-4 sm:p-5">
+        <table class="w-full text-sm border-collapse min-w-[1320px]">
+          <thead>
+            <tr class="text-[11px] uppercase tracking-wide text-neutral-400 border-b border-neutral-200">
+              <th class="text-left font-bold py-2 pr-3 sortable whitespace-nowrap" data-key="campaign_name">캠페인</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="spend">지출액</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="impressions">노출수</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="clicks">클릭수</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="ctr">CTR</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="cpc">CPC</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="cpm">CPM</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="purchases">구매전환건수</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="revenue">매출액</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="roas">ROAS</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="cpa">CPA</th>
+              <th class="text-right font-bold py-2 px-2 sortable whitespace-nowrap" data-key="hookRate">Hook Rate</th>
+              <th class="text-right font-bold py-2 pl-2 sortable whitespace-nowrap" data-key="holdRate">Hold Rate</th>
+            </tr>
+          </thead>
+          <tbody id="campaignBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ============ 탭: 소재 ============ -->
+  <div id="tab-creative" class="tab-panel hidden">
+    <section class="bg-white border border-neutral-200 rounded-xl shadow-sm py-24 px-6 flex flex-col items-center justify-center text-center gap-3">
+      <div class="w-12 h-12 rounded-full bg-neutral-100 flex items-center justify-center text-2xl">🎬</div>
+      <h2 class="text-base font-bold text-neutral-800">소재별 성과 대시보드 준비 중</h2>
+      <p class="text-sm text-neutral-500 max-w-md leading-relaxed">
+        소재(이미지·동영상) 단위 지표 연동을 준비하고 있습니다. 연동되면 소재별 지출액, Hook Rate, Hold Rate, 썸네일 미리보기 등을 이 화면에서 확인할 수 있습니다.
+      </p>
+    </section>
+  </div>
+
+  <footer class="text-[11.5px] text-neutral-400 leading-relaxed pt-1 pb-6">
+    데이터 출처: Supabase <span class="num" id="tableNameLabel"></span> 테이블 (Meta Ads API로 수집된 캠페인 성과 데이터) · Hook Rate = 3초 동영상 재생수 ÷ 노출수, Hold Rate = 동영상 100% 완료 조회수 ÷ 3초 동영상 재생수 · 페이지를 새로고침하면 Supabase의 최신 데이터를 다시 불러옵니다.
+  </footer>
+
+</div>
+
+<!-- Loading / error overlay -->
+<div id="loadingOverlay" class="fixed inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center z-50">
+  <div id="loadingContent" class="text-center max-w-sm px-6">
+    <div class="w-8 h-8 mx-auto mb-4 border-[3px] border-neutral-200 border-t-blue-600 rounded-full animate-spin"></div>
+    <div class="text-sm text-neutral-500">Supabase에서 데이터를 불러오는 중입니다…</div>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   설정 — 배포 환경에 맞게 이 값들을 수정하세요.
+   SUPABASE_ANON_KEY 는 공개(publishable/anon) 키만 사용하세요. service_role
+   키는 절대 클라이언트 코드에 넣지 마세요 (RLS 를 우회하는 비밀 키입니다).
+   ========================================================================= */
+const SUPABASE_URL = "https://xemutoupgtdqreywucic.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_tXdluUBb2F3rd_enRUC0dA_YKWzrnX2";
+const TABLE_NAME = "meta_campaign_performance";
+
+/* [캠페인] 탭의 "제품별 묶어보기"는 이 테이블에 별도 product 컬럼이 없어
+   캠페인명에 포함된 키워드로 그룹을 나눕니다. 실제 계정의 제품/캠페인
+   명명 규칙에 맞게 이 목록을 수정하세요. 캠페인명이 여러 키워드를 동시에
+   포함하면 배열의 앞쪽 키워드가 우선 적용됩니다. 어떤 키워드에도 해당하지
+   않는 캠페인은 "기타(미분류)" 그룹으로 묶입니다. */
+const PRODUCT_KEYWORDS = ["비타민C", "프레시그린", "홀리 히솝", "떡솝"];
+/* ========================================================================= */
+
+document.getElementById("tableNameLabel").textContent = TABLE_NAME;
+
+const sbClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const METRIC_DEFS = [
+  { key: "spend",       label: "지출액",       fmt: fmtWon },
+  { key: "impressions", label: "노출수",       fmt: fmtInt },
+  { key: "clicks",      label: "클릭수",       fmt: fmtInt },
+  { key: "ctr",         label: "CTR",         fmt: fmtPct },
+  { key: "cpc",         label: "CPC",         fmt: fmtWon },
+  { key: "cpm",         label: "CPM",         fmt: fmtWon },
+  { key: "purchases",   label: "구매전환건수", fmt: fmtInt },
+  { key: "revenue",     label: "매출액",       fmt: fmtWon },
+  { key: "roas",        label: "ROAS",        fmt: fmtRoasPct },
+  { key: "cpa",         label: "CPA",         fmt: fmtWon },
+  { key: "hookRate",    label: "Hook Rate",   fmt: fmtPct },
+  { key: "holdRate",    label: "Hold Rate",   fmt: fmtPct },
+];
+
+/* 캠페인명 키워드 기반 목적 분류 — 테이블에 별도 objective 컬럼이 없어 이름으로 추정합니다. */
+const OBJECTIVE_RULES = [
+  { key: "conversion",    label: "전환",       match: (name) => name.includes("전환") },
+  { key: "traffic",       label: "트래픽",     match: (name) => name.includes("트래픽") },
+  { key: "content_view",  label: "콘텐츠조회", match: (name) => /(컨텐츠|콘텐츠)\s*조회/.test(name) },
+  { key: "profile_visit", label: "프로필방문", match: (name) => /프로필\s*방문/.test(name) },
+];
+function classifyObjective(name) {
+  for (const rule of OBJECTIVE_RULES) if (rule.match(name)) return rule;
+  return null;
+}
+function classifyProduct(name) {
+  return PRODUCT_KEYWORDS.find(k => name.includes(k)) || null;
+}
+
+let ALL_ROWS = [];      // raw rows from Supabase
+let MIN_DATE = null;
+let MAX_DATE = null;
+let currentStart = null;
+let currentEnd = null;
+let trendChart = null;
+let cpaChart = null;
+let ctrChart = null;
+let productChart = null;
+let sortState = { key: "spend", dir: "desc" };
+
+// [캠페인] 탭 상태
+let viewMode = "all";     // "all" | "objective" | "product"
+let searchQuery = "";
+let expandedGroups = new Set(); // 아코디언으로 펼쳐진 그룹 key ("objective"/"product" 모드에서만 사용)
+
+/* ---------------- formatting ---------------- */
+
+function fmtWon(n) {
+  if (n === null || n === undefined || !isFinite(n)) return "–";
+  return "₩" + Math.round(n).toLocaleString("ko-KR");
+}
+function fmtInt(n) {
+  if (n === null || n === undefined || !isFinite(n)) return "–";
+  return Math.round(n).toLocaleString("ko-KR");
+}
+function fmtPct(n) {
+  if (n === null || n === undefined || !isFinite(n)) return "–";
+  return n.toFixed(1) + "%";
+}
+function fmtRatio(n) {
+  if (n === null || n === undefined || !isFinite(n)) return "–";
+  return n.toFixed(2);
+}
+function fmtRoasPct(n) {
+  if (n === null || n === undefined || !isFinite(n)) return "–";
+  return (n * 100).toFixed(1) + "%";
+}
+function fmtDateKR(d) {
+  if (!d) return "–";
+  const [y, m, day] = d.split("-");
+  return `${y}.${m}.${day}`;
+}
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+function daysBetween(a, b) {
+  return Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 86400000) + 1;
+}
+function clampDate(d) {
+  if (d < MIN_DATE) return MIN_DATE;
+  if (d > MAX_DATE) return MAX_DATE;
+  return d;
+}
+
+/* ---------------- data fetch ---------------- */
+
+async function fetchAllRows() {
+  const pageSize = 1000;
+  let from = 0;
+  let all = [];
+  while (true) {
+    const { data, error } = await sbClient
+      .from(TABLE_NAME)
+      .select("date, campaign_id, campaign_name, spend, impressions, clicks, video_3sec_views, video_p100_views, purchases, purchase_value")
+      .order("date", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+
+/* ---------------- aggregation ---------------- */
+
+function emptyAgg() {
+  return { spend: 0, impressions: 0, clicks: 0, video3s: 0, videoP100: 0, purchases: 0, revenue: 0 };
+}
+function addRow(agg, r) {
+  agg.spend += Number(r.spend) || 0;
+  agg.impressions += Number(r.impressions) || 0;
+  agg.clicks += Number(r.clicks) || 0;
+  agg.video3s += Number(r.video_3sec_views) || 0;
+  agg.videoP100 += Number(r.video_p100_views) || 0;
+  agg.purchases += Number(r.purchases) || 0;
+  agg.revenue += Number(r.purchase_value) || 0;
+}
+// CTR/CPC/CPM/ROAS/CPA/Hook·Hold Rate 는 전부 합산된 원시값(SUM)에서 계산합니다.
+// (개별 캠페인 비율의 단순 평균이 아닙니다 — 그룹 합산 시에도 동일하게 적용됩니다.)
+function deriveRatios(agg) {
+  return {
+    ...agg,
+    ctr: agg.impressions ? (agg.clicks / agg.impressions) * 100 : 0,
+    cpc: agg.clicks ? agg.spend / agg.clicks : null,
+    cpm: agg.impressions ? (agg.spend / agg.impressions) * 1000 : null,
+    roas: agg.spend ? agg.revenue / agg.spend : null,
+    cpa: agg.purchases ? agg.spend / agg.purchases : null,
+    hookRate: agg.impressions ? (agg.video3s / agg.impressions) * 100 : 0,
+    holdRate: agg.video3s ? (agg.videoP100 / agg.video3s) * 100 : 0,
+  };
+}
+function rowsInRange(start, end) {
+  return ALL_ROWS.filter(r => r.date >= start && r.date <= end);
+}
+function totalsForRange(start, end) {
+  const rows = rowsInRange(start, end);
+  const agg = emptyAgg();
+  rows.forEach(r => addRow(agg, r));
+  return deriveRatios(agg);
+}
+function dailyTotalsForRange(start, end) {
+  const rows = rowsInRange(start, end);
+  const byDate = {};
+  rows.forEach(r => {
+    if (!byDate[r.date]) byDate[r.date] = emptyAgg();
+    addRow(byDate[r.date], r);
+  });
+  const dates = [];
+  let cur = start;
+  while (cur <= end) { dates.push(cur); cur = addDays(cur, 1); }
+  return dates.map(d => {
+    const agg = byDate[d] || emptyAgg();
+    const derived = deriveRatios(agg);
+    return { date: d, spend: agg.spend, revenue: agg.revenue, purchases: agg.purchases, roas: derived.roas, cpa: derived.cpa, ctr: derived.ctr };
+  });
+}
+
+// 개별 캠페인 단위 집계 ("전체 캠페인" 보기)
+function campaignTotalsForRange(start, end) {
+  const rows = rowsInRange(start, end);
+  const byCampaign = {};
+  rows.forEach(r => {
+    const id = r.campaign_id;
+    if (!byCampaign[id]) byCampaign[id] = { id, name: r.campaign_name, agg: emptyAgg() };
+    addRow(byCampaign[id].agg, r);
+  });
+  return Object.values(byCampaign)
+    .map(c => ({ id: c.id, campaign_name: c.name, campaignCount: 1, ...deriveRatios(c.agg) }))
+    .filter(c => c.spend > 0);
+}
+
+// 목적별 / 제품별 그룹 집계 ("묶어보기" 보기) — 그룹 내 모든 캠페인의 원시값을 SUM 한 뒤
+// CTR/CPC/CPM/ROAS/CPA/Hook·Hold Rate 를 그 합산값 기준으로 다시 계산합니다.
+function groupedTotalsForRange(start, end, mode) {
+  const rows = rowsInRange(start, end);
+  const groups = {};
+  rows.forEach(r => {
+    let key, label;
+    if (mode === "objective") {
+      const rule = classifyObjective(r.campaign_name);
+      key = rule ? rule.key : "__other__";
+      label = rule ? rule.label : "기타(미분류)";
+    } else {
+      const kw = classifyProduct(r.campaign_name);
+      key = kw || "__other__";
+      label = kw || "기타(미분류)";
+    }
+    if (!groups[key]) groups[key] = { key, label, agg: emptyAgg(), campaignIds: new Set() };
+    addRow(groups[key].agg, r);
+    groups[key].campaignIds.add(r.campaign_id);
+  });
+  return Object.values(groups)
+    .map(g => ({ id: g.key, campaign_name: g.label, campaignCount: g.campaignIds.size, ...deriveRatios(g.agg) }))
+    .filter(g => g.spend > 0);
+}
+
+// 아코디언 드릴다운: 특정 그룹(key)에 속한 개별 캠페인들의 상세 성과 (목적별/제품별 묶어보기 모드 전용)
+function campaignRowsForGroup(start, end, mode, groupKey) {
+  const rows = rowsInRange(start, end).filter(r => {
+    if (mode === "objective") {
+      const rule = classifyObjective(r.campaign_name);
+      return (rule ? rule.key : "__other__") === groupKey;
+    }
+    const kw = classifyProduct(r.campaign_name);
+    return (kw || "__other__") === groupKey;
+  });
+  const byCampaign = {};
+  rows.forEach(r => {
+    const id = r.campaign_id;
+    if (!byCampaign[id]) byCampaign[id] = { id, name: r.campaign_name, agg: emptyAgg() };
+    addRow(byCampaign[id].agg, r);
+  });
+  return Object.values(byCampaign)
+    .map(c => ({ id: c.id, campaign_name: c.name, campaignCount: 1, ...deriveRatios(c.agg) }))
+    .filter(c => c.spend > 0)
+    .sort((a, b) => b.spend - a.spend);
+}
+
+function currentTableRows(start, end) {
+  if (viewMode === "objective") return groupedTotalsForRange(start, end, "objective");
+  if (viewMode === "product") return groupedTotalsForRange(start, end, "product");
+  return campaignTotalsForRange(start, end);
+}
+
+function applySearch(rows) {
+  const q = searchQuery.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter(r => (String(r.campaign_name) + " " + String(r.id)).toLowerCase().includes(q));
+}
+
+/* ---------------- rendering: KPI cards ---------------- */
+
+function buildKpiGrid() {
+  const grid = document.getElementById("kpiGrid");
+  grid.innerHTML = "";
+  METRIC_DEFS.forEach(def => {
+    const cell = document.createElement("div");
+    cell.className = "bg-white p-4 flex flex-col gap-1";
+    cell.innerHTML = `
+      <div class="text-[12px] text-neutral-500 font-medium">${def.label}</div>
+      <div class="num text-[19px] font-bold" data-kpi="${def.key}">–</div>
+    `;
+    grid.appendChild(cell);
+  });
+}
+
+function renderKpis(totals) {
+  METRIC_DEFS.forEach(def => {
+    const el = document.querySelector(`[data-kpi="${def.key}"]`);
+    if (el) el.textContent = def.fmt(totals[def.key]);
+  });
+}
+
+/* ---------------- rendering: chart 1 (spend/revenue/ROAS) ---------------- */
+
+function renderTrendChart(daily) {
+  const ctx = document.getElementById("trendChart").getContext("2d");
+  const labels = daily.map(d => {
+    const [, m, day] = d.date.split("-");
+    return `${parseInt(m)}/${parseInt(day)}`;
+  });
+
+  const data = {
+    labels,
+    datasets: [
+      {
+        type: "bar",
+        label: "지출액",
+        data: daily.map(d => d.spend),
+        backgroundColor: "rgba(37, 99, 235, 0.75)",
+        borderRadius: 3,
+        yAxisID: "y",
+        order: 2,
+      },
+      {
+        type: "bar",
+        label: "매출액",
+        data: daily.map(d => d.revenue),
+        backgroundColor: "rgba(16, 185, 129, 0.75)",
+        borderRadius: 3,
+        yAxisID: "y",
+        order: 2,
+      },
+      {
+        type: "line",
+        label: "ROAS",
+        data: daily.map(d => d.roas),
+        borderColor: "#f59e0b",
+        backgroundColor: "#f59e0b",
+        borderWidth: 2.5,
+        pointRadius: daily.length > 45 ? 0 : 2.5,
+        pointBackgroundColor: "#f59e0b",
+        tension: 0.25,
+        yAxisID: "y1",
+        order: 1,
+        spanGaps: true,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (item) => {
+            if (item.dataset.label === "ROAS") {
+              return `ROAS: ${item.raw === null ? "–" : fmtRoasPct(Number(item.raw))}`;
+            }
+            return `${item.dataset.label}: ${fmtWon(item.raw)}`;
+          },
+        },
+      },
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10, font: { size: 11 } } },
+      y: {
+        position: "left",
+        grid: { color: "#f1f1f0" },
+        ticks: {
+          font: { size: 11 },
+          callback: (v) => {
+            const man = v / 10000;
+            return (Math.abs(man) >= 1 ? man.toFixed(0) + "만" : v);
+          },
+        },
+        title: { display: true, text: "지출액 / 매출액 (KRW)", font: { size: 11 } },
+      },
+      y1: {
+        position: "right",
+        grid: { display: false },
+        ticks: { font: { size: 11 }, callback: (v) => (v * 100).toFixed(0) + "%" },
+        title: { display: true, text: "ROAS", font: { size: 11 } },
+      },
+    },
+  };
+
+  if (trendChart) {
+    trendChart.data = data;
+    trendChart.options = options;
+    trendChart.update();
+  } else {
+    trendChart = new Chart(ctx, { data, options });
+  }
+}
+
+/* ---------------- rendering: chart 2 (CPA 추이) ---------------- */
+
+function renderCpaChart(daily) {
+  const ctx = document.getElementById("cpaChart").getContext("2d");
+  const labels = daily.map(d => {
+    const [, m, day] = d.date.split("-");
+    return `${parseInt(m)}/${parseInt(day)}`;
+  });
+
+  const data = {
+    labels,
+    datasets: [
+      {
+        type: "line",
+        label: "CPA",
+        data: daily.map(d => d.cpa),
+        borderColor: "#7c3aed",
+        backgroundColor: "rgba(124, 58, 237, 0.12)",
+        borderWidth: 2.5,
+        pointRadius: daily.length > 45 ? 0 : 2.5,
+        pointBackgroundColor: "#7c3aed",
+        tension: 0.25,
+        fill: true,
+        spanGaps: true,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (item) => `CPA: ${item.raw === null ? "구매 없음" : fmtWon(item.raw)}`,
+        },
+      },
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10, font: { size: 11 } } },
+      y: {
+        position: "left",
+        grid: { color: "#f1f1f0" },
+        ticks: {
+          font: { size: 11 },
+          callback: (v) => {
+            const man = v / 10000;
+            return (Math.abs(man) >= 1 ? man.toFixed(0) + "만" : v);
+          },
+        },
+        title: { display: true, text: "CPA (KRW)", font: { size: 11 } },
+      },
+    },
+  };
+
+  if (cpaChart) {
+    cpaChart.data = data;
+    cpaChart.options = options;
+    cpaChart.update();
+  } else {
+    cpaChart = new Chart(ctx, { data, options });
+  }
+}
+
+/* ---------------- rendering: chart 3 (CTR 추이) ---------------- */
+
+function renderCtrChart(daily) {
+  const ctx = document.getElementById("ctrChart").getContext("2d");
+  const labels = daily.map(d => {
+    const [, m, day] = d.date.split("-");
+    return `${parseInt(m)}/${parseInt(day)}`;
+  });
+
+  const data = {
+    labels,
+    datasets: [
+      {
+        type: "line",
+        label: "CTR",
+        data: daily.map(d => d.ctr),
+        borderColor: "#0891b2",
+        backgroundColor: "rgba(8, 145, 178, 0.12)",
+        borderWidth: 2.5,
+        pointRadius: daily.length > 45 ? 0 : 2.5,
+        pointBackgroundColor: "#0891b2",
+        tension: 0.25,
+        fill: true,
+        spanGaps: true,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (item) => `CTR: ${item.raw === null || item.raw === undefined ? "–" : fmtPct(Number(item.raw))}`,
+        },
+      },
+    },
+    scales: {
+      x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 10, font: { size: 11 } } },
+      y: {
+        position: "left",
+        grid: { color: "#f1f1f0" },
+        ticks: { font: { size: 11 }, callback: (v) => v.toFixed(1) + "%" },
+        title: { display: true, text: "CTR (%)", font: { size: 11 } },
+      },
+    },
+  };
+
+  if (ctrChart) {
+    ctrChart.data = data;
+    ctrChart.options = options;
+    ctrChart.update();
+  } else {
+    ctrChart = new Chart(ctx, { data, options });
+  }
+}
+
+/* ---------------- rendering: chart 4 (제품별 성과 비교: 지출액 vs 매출액) ---------------- */
+
+function renderProductCompareChart(start, end) {
+  const rows = groupedTotalsForRange(start, end, "product").sort((a, b) => b.spend - a.spend);
+  const ctx = document.getElementById("productChart").getContext("2d");
+
+  const data = {
+    labels: rows.map(r => r.campaign_name),
+    datasets: [
+      {
+        type: "bar",
+        label: "지출액",
+        data: rows.map(r => r.spend),
+        backgroundColor: "rgba(37, 99, 235, 0.75)",
+        borderRadius: 3,
+      },
+      {
+        type: "bar",
+        label: "매출액",
+        data: rows.map(r => r.revenue),
+        backgroundColor: "rgba(16, 185, 129, 0.75)",
+        borderRadius: 3,
+      },
+    ],
+  };
+
+  const options = {
+    indexAxis: "y",
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (item) => `${item.dataset.label}: ${fmtWon(item.raw)}`,
+        },
+      },
+    },
+    scales: {
+      x: {
+        grid: { color: "#f1f1f0" },
+        ticks: {
+          font: { size: 11 },
+          callback: (v) => {
+            const man = v / 10000;
+            return (Math.abs(man) >= 1 ? man.toFixed(0) + "만" : v);
+          },
+        },
+      },
+      y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+    },
+  };
+
+  if (productChart) {
+    productChart.data = data;
+    productChart.options = options;
+    productChart.update();
+  } else {
+    productChart = new Chart(ctx, { data, options });
+  }
+}
+
+/* ---------------- rendering: campaign table ---------------- */
+
+function sortRows(rows) {
+  const { key, dir } = sortState;
+  const mul = dir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    let av = a[key], bv = b[key];
+    if (key === "campaign_name") {
+      return mul * String(av).localeCompare(String(bv), "ko");
+    }
+    av = av === null || av === undefined || !isFinite(av) ? -Infinity : av;
+    bv = bv === null || bv === undefined || !isFinite(bv) ? -Infinity : bv;
+    return mul * (av - bv);
+  });
+}
+
+function updateCampaignTableChrome() {
+  const headerLabel = viewMode === "objective" ? "목적" : viewMode === "product" ? "제품" : "캠페인";
+  document.querySelector('th[data-key="campaign_name"]').textContent = headerLabel;
+  const titleMap = {
+    all: "캠페인별 성과",
+    objective: "목적별 성과 (묶어보기)",
+    product: "제품별 성과 (묶어보기)",
+  };
+  document.getElementById("campaignTableTitle").textContent = titleMap[viewMode];
+}
+
+function renderCampaignTable(start, end) {
+  const rows = sortRows(applySearch(currentTableRows(start, end)));
+  const body = document.getElementById("campaignBody");
+  body.innerHTML = "";
+
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="13" class="text-center text-neutral-400 text-sm py-10">조건에 맞는 데이터가 없습니다.</td></tr>`;
+    return;
+  }
+
+  const grouped = viewMode !== "all";
+
+  function rowCells(r, opts) {
+    const nameCell = opts.isChild
+      ? `<td class="py-2 pr-3 pl-8 text-left text-neutral-600 max-w-[320px] truncate whitespace-nowrap" title="${escapeHtml(r.campaign_name)}">${escapeHtml(r.campaign_name)}</td>`
+      : `<td class="py-2.5 pr-3 text-left font-medium max-w-[320px] truncate whitespace-nowrap" title="${escapeHtml(r.campaign_name)}">${opts.nameLabel}</td>`;
+    const pad = opts.isChild ? "py-2" : "py-2.5";
+    const numCls = opts.isChild ? `${pad} px-2 text-right num whitespace-nowrap text-neutral-500` : `${pad} px-2 text-right num whitespace-nowrap`;
+    const lastCls = opts.isChild ? `${pad} pl-2 text-right num whitespace-nowrap text-neutral-500` : `${pad} pl-2 text-right num whitespace-nowrap`;
+    return `
+      ${nameCell}
+      <td class="${numCls}">${fmtWon(r.spend)}</td>
+      <td class="${numCls}">${fmtInt(r.impressions)}</td>
+      <td class="${numCls}">${fmtInt(r.clicks)}</td>
+      <td class="${numCls}">${fmtPct(r.ctr)}</td>
+      <td class="${numCls}">${fmtWon(r.cpc)}</td>
+      <td class="${numCls}">${fmtWon(r.cpm)}</td>
+      <td class="${numCls}">${fmtInt(r.purchases)}</td>
+      <td class="${numCls}">${fmtWon(r.revenue)}</td>
+      <td class="${numCls}">${fmtRoasPct(r.roas)}</td>
+      <td class="${numCls}">${fmtWon(r.cpa)}</td>
+      <td class="${numCls}">${fmtPct(r.hookRate)}</td>
+      <td class="${lastCls}">${fmtPct(r.holdRate)}</td>
+    `;
+  }
+
+  rows.forEach(r => {
+    const groupKey = String(r.id);
+    const isExpanded = grouped && expandedGroups.has(groupKey);
+    const tr = document.createElement("tr");
+    tr.className = "border-b border-neutral-100 hover:bg-neutral-50" + (grouped ? " cursor-pointer select-none" : "");
+    if (grouped) tr.dataset.groupToggle = groupKey;
+
+    const arrow = grouped
+      ? `<span class="inline-block w-3.5 text-neutral-400 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}">▶</span> `
+      : "";
+    const nameLabel = grouped
+      ? `${arrow}${escapeHtml(r.campaign_name)} <span class="text-neutral-400 font-normal">· 캠페인 ${r.campaignCount}개</span>`
+      : escapeHtml(r.campaign_name);
+
+    tr.innerHTML = rowCells(r, { isChild: false, nameLabel });
+    body.appendChild(tr);
+
+    if (grouped && isExpanded) {
+      const children = campaignRowsForGroup(start, end, viewMode, groupKey);
+      if (!children.length) {
+        const emptyTr = document.createElement("tr");
+        emptyTr.className = "border-b border-neutral-100 bg-gray-50";
+        emptyTr.innerHTML = `<td colspan="13" class="py-2 pl-8 text-left text-neutral-400 text-xs whitespace-nowrap">하위 캠페인 데이터가 없습니다.</td>`;
+        body.appendChild(emptyTr);
+      } else {
+        children.forEach(c => {
+          const childTr = document.createElement("tr");
+          childTr.className = "border-b border-neutral-100 bg-gray-50";
+          childTr.innerHTML = rowCells(c, { isChild: true });
+          body.appendChild(childTr);
+        });
+      }
+    }
+  });
+}
+
+function escapeHtml(s) {
+  const div = document.createElement("div");
+  div.textContent = s ?? "";
+  return div.innerHTML;
+}
+
+document.querySelectorAll("th.sortable").forEach(th => {
+  th.addEventListener("click", () => {
+    const key = th.dataset.key;
+    if (sortState.key === key) {
+      sortState.dir = sortState.dir === "desc" ? "asc" : "desc";
+    } else {
+      sortState = { key, dir: key === "campaign_name" ? "asc" : "desc" };
+    }
+    renderCampaignTable(currentStart, currentEnd);
+  });
+});
+
+/* ---------------- 상단 탭 전환 (메인 / 캠페인 / 소재) ---------------- */
+
+document.getElementById("tabNav").addEventListener("click", (e) => {
+  const btn = e.target.closest(".tab-btn");
+  if (!btn) return;
+  document.querySelectorAll("#tabNav .tab-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  const tab = btn.dataset.tab;
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.add("hidden"));
+  document.getElementById("tab-" + tab).classList.remove("hidden");
+});
+
+/* ---------------- [캠페인] 탭: group-by 토글 + 검색 wiring ---------------- */
+
+document.getElementById("groupByToggle").addEventListener("click", (e) => {
+  const btn = e.target.closest(".groupby-btn");
+  if (!btn) return;
+  document.querySelectorAll("#groupByToggle .groupby-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  viewMode = btn.dataset.mode;
+  sortState = { key: "spend", dir: "desc" };
+  expandedGroups.clear();
+  updateCampaignTableChrome();
+  renderCampaignTable(currentStart, currentEnd);
+});
+
+document.getElementById("campaignSearch").addEventListener("input", (e) => {
+  searchQuery = e.target.value;
+  renderCampaignTable(currentStart, currentEnd);
+});
+
+// 아코디언 드릴다운: 그룹 행 클릭(화살표 포함) 시 하위 캠페인 목록 펼치기/접기
+document.getElementById("campaignBody").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr[data-group-toggle]");
+  if (!tr) return;
+  const key = tr.dataset.groupToggle;
+  if (expandedGroups.has(key)) expandedGroups.delete(key);
+  else expandedGroups.add(key);
+  renderCampaignTable(currentStart, currentEnd);
+});
+
+/* ---------------- master render ---------------- */
+
+function renderAll(start, end) {
+  currentStart = start;
+  currentEnd = end;
+  document.getElementById("startDate").value = start;
+  document.getElementById("endDate").value = end;
+
+  const nDays = daysBetween(start, end);
+  document.getElementById("rangeSummary").textContent =
+    `${fmtDateKR(start)} ~ ${fmtDateKR(end)} · ${nDays}일 · 데이터 보유 기간 ${fmtDateKR(MIN_DATE)} ~ ${fmtDateKR(MAX_DATE)}`;
+
+  const totals = totalsForRange(start, end);
+  const daily = dailyTotalsForRange(start, end);
+  renderKpis(totals);
+  renderTrendChart(daily);
+  renderCpaChart(daily);
+  renderCtrChart(daily);
+  renderProductCompareChart(start, end);
+  renderCampaignTable(start, end);
+}
+
+/* ---------------- controls wiring (기간 필터 — 모든 탭 공통) ---------------- */
+
+document.getElementById("presetGroup").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-days]");
+  if (!btn) return;
+  document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  const days = parseInt(btn.dataset.days, 10);
+  const end = MAX_DATE;
+  const start = clampDate(addDays(end, -(days - 1)));
+  renderAll(start, end);
+});
+
+document.getElementById("applyRangeBtn").addEventListener("click", () => {
+  let start = document.getElementById("startDate").value || MIN_DATE;
+  let end = document.getElementById("endDate").value || MAX_DATE;
+  start = clampDate(start);
+  end = clampDate(end);
+  if (start > end) { const t = start; start = end; end = t; }
+  document.querySelectorAll(".preset-btn").forEach(b => b.classList.remove("active"));
+  renderAll(start, end);
+});
+
+/* ---------------- init ---------------- */
+
+function showError(message) {
+  document.getElementById("loadingContent").innerHTML = `
+    <div class="text-2xl mb-3">⚠️</div>
+    <div class="text-sm font-semibold text-neutral-800 mb-2">데이터를 불러오지 못했습니다</div>
+    <div class="text-xs text-neutral-500 leading-relaxed mb-3">${escapeHtml(message)}</div>
+    <div class="text-[11px] text-neutral-400 leading-relaxed">
+      · SUPABASE_URL / SUPABASE_ANON_KEY 값이 올바른지 확인하세요.<br/>
+      · ${escapeHtml(TABLE_NAME)} 테이블에 anon(공개) 역할의 SELECT 를 허용하는 RLS 정책이 있는지 확인하세요.<br/>
+      · 테이블/컬럼 이름이 실제 스키마와 일치하는지 확인하세요.
+    </div>
+  `;
+  document.getElementById("statusBadge").textContent = "연결 실패";
+  document.getElementById("statusBadge").className = "text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-1.5 whitespace-nowrap";
+}
+
+async function init() {
+  buildKpiGrid();
+  try {
+    ALL_ROWS = await fetchAllRows();
+    if (!ALL_ROWS.length) {
+      showError(`${TABLE_NAME} 테이블에서 행을 하나도 받지 못했습니다. 테이블이 비어 있거나 RLS 정책이 조회를 막고 있을 수 있습니다.`);
+      return;
+    }
+    const dates = ALL_ROWS.map(r => r.date).sort();
+    MIN_DATE = dates[0];
+    MAX_DATE = dates[dates.length - 1];
+
+    document.getElementById("startDate").min = MIN_DATE;
+    document.getElementById("startDate").max = MAX_DATE;
+    document.getElementById("endDate").min = MIN_DATE;
+    document.getElementById("endDate").max = MAX_DATE;
+
+    const campaignCount = new Set(ALL_ROWS.map(r => r.campaign_id)).size;
+    document.getElementById("statusBadge").textContent =
+      `Supabase 연결됨 · 행 ${ALL_ROWS.length.toLocaleString("ko-KR")}개 · 캠페인 ${campaignCount}개`;
+
+    document.querySelector('.preset-btn[data-days="7"]').classList.add("active");
+    const initEnd = MAX_DATE;
+    const initStart = clampDate(addDays(initEnd, -6));
+    renderAll(initStart, initEnd);
+
+    document.getElementById("loadingOverlay").style.opacity = "0";
+    setTimeout(() => document.getElementById("loadingOverlay").remove(), 200);
+  } catch (err) {
+    console.error(err);
+    showError(err && err.message ? err.message : String(err));
+  }
+}
+
+init();
+</script>
+</body>
+</html>
