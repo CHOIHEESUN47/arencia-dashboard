@@ -168,22 +168,28 @@
   <!-- ============ 탭: 캠페인 ============ -->
   <div id="tab-campaign" class="tab-panel hidden space-y-5">
 
-    <!-- Group-by 토글 + 검색 -->
-    <section class="bg-white border border-neutral-200 rounded-xl shadow-sm p-3 flex flex-wrap items-center gap-3">
-      <div id="groupByToggle" class="inline-flex bg-neutral-100 rounded-lg p-1 gap-1">
-        <button data-mode="all" class="groupby-btn active">전체 캠페인</button>
-        <button data-mode="objective" class="groupby-btn">목적별 묶어보기</button>
-        <button data-mode="product" class="groupby-btn">제품별 묶어보기</button>
+    <!-- Group-by 토글 + 검색 + 서브 필터(크로스 필터) -->
+    <section class="bg-white border border-neutral-200 rounded-xl shadow-sm p-3 space-y-3">
+      <div class="flex flex-wrap items-center gap-3">
+        <div id="groupByToggle" class="inline-flex bg-neutral-100 rounded-lg p-1 gap-1">
+          <button data-mode="all" class="groupby-btn active">전체 캠페인</button>
+          <button data-mode="objective" class="groupby-btn">목적별 묶어보기</button>
+          <button data-mode="product" class="groupby-btn">제품별 묶어보기</button>
+        </div>
+        <input id="campaignSearch" type="text" placeholder="캠페인명 또는 소재코드로 검색"
+          class="flex-1 min-w-[220px] text-sm border border-neutral-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
       </div>
-      <input id="campaignSearch" type="text" placeholder="캠페인명 또는 소재코드로 검색"
-        class="flex-1 min-w-[220px] text-sm border border-neutral-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
+      <div id="campaignSubFilterRow" class="hidden flex flex-wrap items-center gap-2 border-t border-neutral-100 pt-3">
+        <span id="campaignSubFilterLabel" class="text-xs font-bold text-neutral-400 pl-1">필터</span>
+        <div id="campaignSubFilter" class="inline-flex flex-wrap bg-neutral-100 rounded-lg p-1 gap-1"></div>
+      </div>
     </section>
 
     <!-- Campaign table -->
     <section class="bg-white border border-neutral-200 rounded-xl shadow-sm">
       <div class="flex items-baseline justify-between flex-wrap gap-2 p-4 sm:p-5 pb-0">
         <h2 id="campaignTableTitle" class="text-[15px] font-bold">캠페인별 성과</h2>
-        <div class="text-xs text-neutral-400">선택 기간 내 지출이 발생한 항목만 표시 · 컬럼 헤더 클릭 시 정렬</div>
+        <div class="text-xs text-neutral-400">선택 기간 내 지출이 발생한 항목만 표시 · 컬럼 헤더 클릭 시 정렬 · 캠페인 행 클릭 시 일별 성과 펼쳐보기</div>
       </div>
       <div class="overflow-x-auto p-4 sm:p-5">
         <table class="w-full text-sm border-collapse min-w-[1420px]">
@@ -222,6 +228,7 @@
           <button data-mode="all" class="groupby-btn active">전체 소재</button>
           <button data-mode="objective" class="groupby-btn">캠페인 목적별</button>
           <button data-mode="product" class="groupby-btn">제품별</button>
+          <button data-mode="campaign" class="groupby-btn">캠페인별</button>
         </div>
         <input id="creativeSearch" type="text" placeholder="소재명 또는 소재코드로 검색"
           class="flex-1 min-w-[220px] text-sm border border-neutral-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
@@ -236,7 +243,7 @@
     <section class="bg-white border border-neutral-200 rounded-xl shadow-sm">
       <div class="flex items-baseline justify-between flex-wrap gap-2 p-4 sm:p-5 pb-0">
         <h2 id="creativeTableTitle" class="text-[15px] font-bold">소재별 성과</h2>
-        <div class="text-xs text-neutral-400">선택 기간 내 지출이 발생한 소재만 표시 · 컬럼 헤더 클릭 시 정렬 · Hook/Hold Rate는 소재 단위 동영상 조회 데이터가 없어 “–”로 표시됩니다</div>
+        <div class="text-xs text-neutral-400">선택 기간 내 지출이 발생한 소재만 표시 · 컬럼 헤더 클릭 시 정렬 · 소재 행 클릭 시 일별 성과 펼쳐보기 · Hook/Hold Rate는 소재 단위 동영상 조회 데이터가 없어 “–”로 표시됩니다</div>
       </div>
       <div class="overflow-x-auto p-4 sm:p-5">
         <table class="w-full text-sm border-collapse min-w-[1420px]">
@@ -353,16 +360,21 @@ let sortState = { key: "spend", dir: "desc" };
 
 // [캠페인] 탭 상태
 let viewMode = "all";     // "all" | "objective" | "product"
-let searchQuery = "";
-let expandedGroups = new Set(); // 아코디언으로 펼쳐진 그룹 key ("objective"/"product" 모드에서만 사용)
-
-// [소재] 탭 상태
-let creativeViewMode = "all";      // "all" | "objective" | "product"
 // 서브 필터(크로스 필터): "objective" 모드에서는 제품 키워드(또는 "__all__"), "product" 모드에서는
 // OBJECTIVE_RULES key(또는 "__all__")를 담습니다. "all" 모드에서는 사용하지 않습니다.
+let campaignSubFilter = "__all__";
+let searchQuery = "";
+let expandedGroups = new Set(); // 아코디언으로 펼쳐진 그룹 key ("objective"/"product" 모드에서만 사용)
+let expandedDailyCampaigns = new Set(); // 일별 드릴다운이 펼쳐진 campaign_id ("전체 캠페인" 또는 그룹 하위 캠페인 행에서 사용)
+
+// [소재] 탭 상태
+let creativeViewMode = "all";      // "all" | "objective" | "product" | "campaign"
+// 서브 필터(크로스 필터): "objective" 모드에서는 제품 키워드(또는 "__all__"), "product" 모드에서는
+// OBJECTIVE_RULES key(또는 "__all__")를 담습니다. "all"/"campaign" 모드에서는 사용하지 않습니다.
 let creativeSubFilter = "__all__";
 let creativeSearchQuery = "";
 let expandedCreativeGroups = new Set();
+let expandedDailyAds = new Set(); // 일별 드릴다운이 펼쳐진 ad_id (개별 소재 행에서 사용)
 let creativeSortState = { key: "spend", dir: "desc" };
 
 // [메인] 탭 상태
@@ -528,8 +540,11 @@ function campaignTotalsForRange(start, end) {
 
 // 목적별 / 제품별 그룹 집계 ("묶어보기" 보기) — 그룹 내 모든 캠페인의 원시값을 SUM 한 뒤
 // CTR/CPC/CPM/ROAS/CPA/Hook·Hold Rate 를 그 합산값 기준으로 다시 계산합니다.
-function groupedTotalsForRange(start, end, mode, objectiveFilter) {
-  const rows = rowsInRange(start, end, objectiveFilter);
+// extraFilter: 선택적 후처리 필터 함수(rows => rows) — [캠페인] 탭의 서브 필터(크로스 필터) 전용으로,
+// [메인] 탭의 제품별 성과 비교 차트 호출([objectiveFilter]만 사용)에는 영향을 주지 않습니다.
+function groupedTotalsForRange(start, end, mode, objectiveFilter, extraFilter) {
+  let rows = rowsInRange(start, end, objectiveFilter);
+  if (extraFilter) rows = extraFilter(rows);
   const groups = {};
   rows.forEach(r => {
     let key, label;
@@ -552,8 +567,11 @@ function groupedTotalsForRange(start, end, mode, objectiveFilter) {
 }
 
 // 아코디언 드릴다운: 특정 그룹(key)에 속한 개별 캠페인들의 상세 성과 (목적별/제품별 묶어보기 모드 전용)
-function campaignRowsForGroup(start, end, mode, groupKey) {
-  const rows = rowsInRange(start, end).filter(r => {
+// extraFilter: 선택적 후처리 필터 함수(rows => rows) — [캠페인] 탭의 서브 필터(크로스 필터) 전용.
+function campaignRowsForGroup(start, end, mode, groupKey, extraFilter) {
+  let rows = rowsInRange(start, end);
+  if (extraFilter) rows = extraFilter(rows);
+  rows = rows.filter(r => {
     if (mode === "objective") {
       const rule = classifyObjective(r.campaign_name);
       return (rule ? rule.key : "__other__") === groupKey;
@@ -573,9 +591,25 @@ function campaignRowsForGroup(start, end, mode, groupKey) {
     .sort((a, b) => b.spend - a.spend);
 }
 
+// [캠페인] 탭 전용 서브 필터(크로스 필터) — "목적별 묶어보기"에서는 제품으로, "제품별 묶어보기"에서는
+// 목적으로 2차 필터링합니다. [메인] 탭에서 쓰는 rowsInRange/groupedTotalsForRange 호출에는 영향 없습니다.
+function applyCampaignCrossFilter(rows) {
+  if (campaignSubFilter === "__all__") return rows;
+  if (viewMode === "objective") {
+    return rows.filter(r => (classifyProduct(r.campaign_name) || "__other__") === campaignSubFilter);
+  }
+  if (viewMode === "product") {
+    return rows.filter(r => {
+      const rule = classifyObjective(r.campaign_name);
+      return (rule ? rule.key : "__other__") === campaignSubFilter;
+    });
+  }
+  return rows;
+}
+
 function currentTableRows(start, end) {
-  if (viewMode === "objective") return groupedTotalsForRange(start, end, "objective");
-  if (viewMode === "product") return groupedTotalsForRange(start, end, "product");
+  if (viewMode === "objective") return groupedTotalsForRange(start, end, "objective", undefined, applyCampaignCrossFilter);
+  if (viewMode === "product") return groupedTotalsForRange(start, end, "product", undefined, applyCampaignCrossFilter);
   return campaignTotalsForRange(start, end);
 }
 
@@ -583,6 +617,20 @@ function applySearch(rows) {
   const q = searchQuery.trim().toLowerCase();
   if (!q) return rows;
   return rows.filter(r => (String(r.campaign_name) + " " + String(r.id)).toLowerCase().includes(q));
+}
+
+// 일별(Daily) 드릴다운: 특정 캠페인(campaignId)의 선택 기간 내 일자별 성과 (하루 단위로 빈 날짜는 0으로 채움)
+function dailyRowsForCampaign(start, end, campaignId) {
+  const rows = ALL_ROWS.filter(r => r.campaign_id === campaignId && r.date >= start && r.date <= end);
+  const byDate = {};
+  rows.forEach(r => {
+    if (!byDate[r.date]) byDate[r.date] = emptyAgg();
+    addRow(byDate[r.date], r);
+  });
+  const dates = [];
+  let cur = start;
+  while (cur <= end) { dates.push(cur); cur = addDays(cur, 1); }
+  return dates.map(d => ({ date: d, ...deriveRatios(byDate[d] || emptyAgg()) }));
 }
 
 /* ---------------- aggregation: [소재] 탭 (meta_ad_performance, ad 단위) ---------------- */
@@ -618,10 +666,10 @@ function adRowsInRange(start, end) {
 }
 
 // 서브 필터(크로스 필터) 적용 — 분류 기준은 소재명이 아닌 campaign_name 키워드입니다.
-// "objective" 모드일 때는 제품 서브 필터를, "product" 모드일 때는 목적 서브 필터를 추가로 적용합니다.
+// "objective"/"campaign" 모드일 때는 제품 서브 필터를, "product" 모드일 때는 목적 서브 필터를 추가로 적용합니다.
 function applyCreativeCrossFilter(rows) {
   if (creativeSubFilter === "__all__") return rows;
-  if (creativeViewMode === "objective") {
+  if (creativeViewMode === "objective" || creativeViewMode === "campaign") {
     return rows.filter(r => (classifyProduct(r.campaign_name) || "__other__") === creativeSubFilter);
   }
   if (creativeViewMode === "product") {
@@ -650,7 +698,8 @@ function adTotalsForRange(start, end) {
     .filter(a => a.spend > 0);
 }
 
-// 캠페인 목적별 / 제품별 그룹 집계 ("묶어보기" 보기) — 분류 기준은 campaign_name 키워드입니다.
+// 캠페인 목적별 / 제품별 / 캠페인별 그룹 집계 ("묶어보기" 보기) — 목적/제품 분류 기준은 campaign_name
+// 키워드이고, "campaign" 모드는 campaign_id 자체로 묶어 캠페인별 소재 성과를 바로 비교할 수 있게 합니다.
 function groupedAdTotalsForRange(start, end, mode) {
   const rows = creativeRowsInRange(start, end);
   const groups = {};
@@ -660,6 +709,9 @@ function groupedAdTotalsForRange(start, end, mode) {
       const rule = classifyObjective(r.campaign_name);
       key = rule ? rule.key : "__other__";
       label = rule ? rule.label : "기타(미분류)";
+    } else if (mode === "campaign") {
+      key = r.campaign_id;
+      label = r.campaign_name;
     } else {
       const kw = classifyProduct(r.campaign_name);
       key = kw || "__other__";
@@ -674,13 +726,16 @@ function groupedAdTotalsForRange(start, end, mode) {
     .filter(g => g.spend > 0);
 }
 
-// 아코디언 드릴다운: 특정 그룹(key)에 속한 개별 소재들의 상세 성과 (목적별/제품별 묶어보기 모드 전용)
+// 아코디언 드릴다운: 특정 그룹(key)에 속한 개별 소재들의 상세 성과 (목적별/제품별/캠페인별 묶어보기 모드 전용)
 // — 서브 필터가 적용된 상태라면 그 필터도 함께 반영됩니다.
 function adRowsForGroup(start, end, mode, groupKey) {
   const rows = creativeRowsInRange(start, end).filter(r => {
     if (mode === "objective") {
       const rule = classifyObjective(r.campaign_name);
       return (rule ? rule.key : "__other__") === groupKey;
+    }
+    if (mode === "campaign") {
+      return r.campaign_id === groupKey;
     }
     const kw = classifyProduct(r.campaign_name);
     return (kw || "__other__") === groupKey;
@@ -700,6 +755,7 @@ function adRowsForGroup(start, end, mode, groupKey) {
 function currentCreativeTableRows(start, end) {
   if (creativeViewMode === "objective") return groupedAdTotalsForRange(start, end, "objective");
   if (creativeViewMode === "product") return groupedAdTotalsForRange(start, end, "product");
+  if (creativeViewMode === "campaign") return groupedAdTotalsForRange(start, end, "campaign");
   return adTotalsForRange(start, end);
 }
 
@@ -707,6 +763,20 @@ function applyCreativeSearch(rows) {
   const q = creativeSearchQuery.trim().toLowerCase();
   if (!q) return rows;
   return rows.filter(r => (String(r.name) + " " + String(r.id)).toLowerCase().includes(q));
+}
+
+// 일별(Daily) 드릴다운: 특정 소재(adId)의 선택 기간 내 일자별 성과 (하루 단위로 빈 날짜는 0으로 채움)
+function dailyRowsForAd(start, end, adId) {
+  const rows = ALL_AD_ROWS.filter(r => r.ad_id === adId && r.date >= start && r.date <= end);
+  const byDate = {};
+  rows.forEach(r => {
+    if (!byDate[r.date]) byDate[r.date] = emptyAdAgg();
+    addAdRow(byDate[r.date], r);
+  });
+  const dates = [];
+  let cur = start;
+  while (cur <= end) { dates.push(cur); cur = addDays(cur, 1); }
+  return dates.map(d => ({ date: d, ...deriveAdRatios(byDate[d] || emptyAdAgg()) }));
 }
 
 /* ---------------- rendering: KPI cards ---------------- */
@@ -1051,6 +1121,116 @@ function updateCampaignTableChrome() {
   document.getElementById("campaignTableTitle").textContent = titleMap[viewMode];
 }
 
+// 서브 필터(크로스 필터) UI — "목적별 묶어보기" 모드에서는 제품 버튼을, "제품별 묶어보기" 모드에서는
+// 목적 버튼을 아래에 표시합니다. "전체 캠페인" 모드에서는 서브 필터 행을 숨깁니다. ([소재] 탭과 동일 패턴)
+function makeCampaignSubFilterBtn(key, label) {
+  const btn = document.createElement("button");
+  btn.dataset.subfilter = key;
+  btn.className = "groupby-btn" + (campaignSubFilter === key ? " active" : "");
+  btn.textContent = label;
+  return btn;
+}
+function updateCampaignSubFilterUI() {
+  const row = document.getElementById("campaignSubFilterRow");
+  const label = document.getElementById("campaignSubFilterLabel");
+  const container = document.getElementById("campaignSubFilter");
+  container.innerHTML = "";
+
+  if (viewMode === "objective") {
+    row.classList.remove("hidden");
+    label.textContent = "제품별 필터";
+    container.appendChild(makeCampaignSubFilterBtn("__all__", "전체"));
+    PRODUCT_KEYWORDS.forEach(kw => container.appendChild(makeCampaignSubFilterBtn(kw, kw)));
+  } else if (viewMode === "product") {
+    row.classList.remove("hidden");
+    label.textContent = "캠페인 목적별 필터";
+    container.appendChild(makeCampaignSubFilterBtn("__all__", "전체"));
+    OBJECTIVE_RULES.forEach(rule => container.appendChild(makeCampaignSubFilterBtn(rule.key, rule.label)));
+  } else {
+    row.classList.add("hidden");
+  }
+}
+
+/* ---------------- 일별(Daily) 드릴다운 렌더링 (공통: 캠페인 탭 / 소재 탭) ---------------- */
+
+// 컬럼 구성은 기본(캠페인/소재) 테이블과 완전히 동일합니다(날짜만 이름 컬럼을 대신함).
+// 다만 폰트가 더 작은(text-xs) 미니 테이블이라 기본 테이블(py-2/py-2.5)보다 셀 패딩을 좁혀
+// 글자 크기 대비 여백이 과하게 넓어 보이지 않도록 맞췄습니다.
+function buildDailyTableHtml(daily) {
+  const rowsHtml = daily.map(d => `
+    <tr class="border-b border-neutral-100 last:border-b-0">
+      <td class="py-1 pr-2 text-left text-neutral-500 whitespace-nowrap">${fmtDateKR(d.date)}</td>
+      <td class="py-1 px-1.5 text-right num whitespace-nowrap">${fmtWon(d.spend)}</td>
+      <td class="py-1 px-1.5 text-right num whitespace-nowrap">${fmtInt(d.impressions)}</td>
+      <td class="py-1 px-1.5 text-right num whitespace-nowrap">${fmtInt(d.clicks)}</td>
+      <td class="py-1 px-1.5 text-right num whitespace-nowrap">${fmtPct(d.ctr)}</td>
+      <td class="py-1 px-1.5 text-right num whitespace-nowrap">${fmtWon(d.cpc)}</td>
+      <td class="py-1 px-1.5 text-right num whitespace-nowrap">${fmtWon(d.cpm)}</td>
+      <td class="py-1 px-1.5 text-right num whitespace-nowrap">${fmtInt(d.purchases)}</td>
+      <td class="py-1 px-1.5 text-right num whitespace-nowrap">${fmtWon(d.revenue)}</td>
+      <td class="py-1 px-1.5 text-right num whitespace-nowrap">${fmtRoasPct(d.roas)}</td>
+      <td class="py-1 px-1.5 text-right num whitespace-nowrap">${fmtWon(d.cpa)}</td>
+      <td class="py-1 px-1.5 text-right num whitespace-nowrap">${fmtPct(d.cvr)}</td>
+      <td class="py-1 px-1.5 text-right num whitespace-nowrap">${fmtPct(d.hookRate)}</td>
+      <td class="py-1 pl-1.5 text-right num whitespace-nowrap">${fmtPct(d.holdRate)}</td>
+    </tr>
+  `).join("");
+  return `
+    <div class="max-h-[320px] overflow-y-auto border border-neutral-200 rounded-lg bg-white">
+      <table class="w-full text-xs border-collapse">
+        <thead class="sticky top-0 bg-neutral-50">
+          <tr class="text-[10px] uppercase tracking-wide text-neutral-400 border-b border-neutral-200">
+            <th class="text-left font-bold py-1 pr-2 whitespace-nowrap">날짜</th>
+            <th class="text-right font-bold py-1 px-1.5 whitespace-nowrap">지출액</th>
+            <th class="text-right font-bold py-1 px-1.5 whitespace-nowrap">노출수</th>
+            <th class="text-right font-bold py-1 px-1.5 whitespace-nowrap">클릭수</th>
+            <th class="text-right font-bold py-1 px-1.5 whitespace-nowrap">CTR</th>
+            <th class="text-right font-bold py-1 px-1.5 whitespace-nowrap">CPC</th>
+            <th class="text-right font-bold py-1 px-1.5 whitespace-nowrap">CPM</th>
+            <th class="text-right font-bold py-1 px-1.5 whitespace-nowrap">구매전환건수</th>
+            <th class="text-right font-bold py-1 px-1.5 whitespace-nowrap">매출액</th>
+            <th class="text-right font-bold py-1 px-1.5 whitespace-nowrap">ROAS</th>
+            <th class="text-right font-bold py-1 px-1.5 whitespace-nowrap">CPA</th>
+            <th class="text-right font-bold py-1 px-1.5 whitespace-nowrap">CVR</th>
+            <th class="text-right font-bold py-1 px-1.5 whitespace-nowrap">Hook Rate</th>
+            <th class="text-right font-bold py-1 pl-1.5 whitespace-nowrap">Hold Rate</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+// 일별 드릴다운 행: 부모 테이블의 컬럼 수(colCount)만큼 colspan 을 가진 <tr><td> 안에 일별 상세 테이블을
+// 넣고, DOM 삽입 직후 더블 requestAnimationFrame 으로 max-height/opacity 를 0→실제값으로 애니메이션합니다.
+function renderDailyDrilldownRow(daily, colCount) {
+  const tr = document.createElement("tr");
+  tr.className = "bg-blue-50/40 border-b border-neutral-100";
+  const td = document.createElement("td");
+  td.colSpan = colCount;
+  td.className = "px-3 py-0";
+  const inner = document.createElement("div");
+  inner.className = "overflow-hidden transition-all duration-200 ease-out";
+  inner.style.maxHeight = "0px";
+  inner.style.opacity = "0";
+  const content = document.createElement("div");
+  content.className = "py-2";
+  content.innerHTML = buildDailyTableHtml(daily);
+  inner.appendChild(content);
+  td.appendChild(inner);
+  tr.appendChild(td);
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      inner.style.maxHeight = inner.scrollHeight + "px";
+      inner.style.opacity = "1";
+    });
+  });
+
+  return tr;
+}
+
 function renderCampaignTable(start, end) {
   const rows = sortRows(applySearch(currentTableRows(start, end)));
   const body = document.getElementById("campaignBody");
@@ -1064,8 +1244,9 @@ function renderCampaignTable(start, end) {
   const grouped = viewMode !== "all";
 
   function rowCells(r, opts) {
+    const prefix = opts.namePrefix || "";
     const nameCell = opts.isChild
-      ? `<td class="py-2 pr-3 pl-8 text-left text-neutral-600 max-w-[320px] truncate whitespace-nowrap" title="${escapeHtml(r.campaign_name)}">${escapeHtml(r.campaign_name)}</td>`
+      ? `<td class="py-2 pr-3 pl-8 text-left text-neutral-600 max-w-[320px] truncate whitespace-nowrap" title="${escapeHtml(r.campaign_name)}">${prefix}${escapeHtml(r.campaign_name)}</td>`
       : `<td class="py-2.5 pr-3 text-left font-medium max-w-[320px] truncate whitespace-nowrap" title="${escapeHtml(r.campaign_name)}">${opts.nameLabel}</td>`;
     const pad = opts.isChild ? "py-2" : "py-2.5";
     const numCls = opts.isChild ? `${pad} px-2 text-right num whitespace-nowrap text-neutral-500` : `${pad} px-2 text-right num whitespace-nowrap`;
@@ -1088,25 +1269,35 @@ function renderCampaignTable(start, end) {
     `;
   }
 
+  // 일별 드릴다운은 "리프(leaf)" 행에서만 사용합니다: 그룹 모드가 아니면 최상위 행 자체가 개별
+  // 캠페인(리프)이고, 그룹 모드에서는 그룹 헤더 행이 아니라 펼쳐진 하위 개별 캠페인 행이 리프입니다.
   rows.forEach(r => {
     const groupKey = String(r.id);
     const isExpanded = grouped && expandedGroups.has(groupKey);
     const tr = document.createElement("tr");
-    tr.className = "border-b border-neutral-100 hover:bg-neutral-50" + (grouped ? " cursor-pointer select-none" : "");
-    if (grouped) tr.dataset.groupToggle = groupKey;
+    tr.className = "border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer select-none";
 
-    const arrow = grouped
-      ? `<span class="inline-block w-3.5 text-neutral-400 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}">▶</span> `
-      : "";
-    const nameLabel = grouped
-      ? `${arrow}${escapeHtml(r.campaign_name)} <span class="text-neutral-400 font-normal">· 캠페인 ${r.campaignCount}개</span>`
-      : escapeHtml(r.campaign_name);
+    let nameLabel;
+    if (grouped) {
+      tr.dataset.groupToggle = groupKey;
+      const arrow = `<span class="inline-block w-3.5 text-neutral-400 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}">▶</span> `;
+      nameLabel = `${arrow}${escapeHtml(r.campaign_name)} <span class="text-neutral-400 font-normal">· 캠페인 ${r.campaignCount}개</span>`;
+    } else {
+      tr.dataset.dailyToggle = groupKey;
+      const dailyExpanded = expandedDailyCampaigns.has(groupKey);
+      const arrow = `<span class="inline-block w-3.5 text-neutral-300 transition-transform duration-150 ${dailyExpanded ? "rotate-90" : ""}">▸</span> `;
+      nameLabel = `${arrow}${escapeHtml(r.campaign_name)}`;
+    }
 
     tr.innerHTML = rowCells(r, { isChild: false, nameLabel });
     body.appendChild(tr);
 
+    if (!grouped && expandedDailyCampaigns.has(groupKey)) {
+      body.appendChild(renderDailyDrilldownRow(dailyRowsForCampaign(start, end, r.id), 14));
+    }
+
     if (grouped && isExpanded) {
-      const children = campaignRowsForGroup(start, end, viewMode, groupKey);
+      const children = campaignRowsForGroup(start, end, viewMode, groupKey, applyCampaignCrossFilter);
       if (!children.length) {
         const emptyTr = document.createElement("tr");
         emptyTr.className = "border-b border-neutral-100 bg-gray-50";
@@ -1114,10 +1305,17 @@ function renderCampaignTable(start, end) {
         body.appendChild(emptyTr);
       } else {
         children.forEach(c => {
+          const childKey = String(c.id);
+          const childDailyExpanded = expandedDailyCampaigns.has(childKey);
+          const childArrow = `<span class="inline-block w-3 text-neutral-300 transition-transform duration-150 ${childDailyExpanded ? "rotate-90" : ""}">▸</span> `;
           const childTr = document.createElement("tr");
-          childTr.className = "border-b border-neutral-100 bg-gray-50";
-          childTr.innerHTML = rowCells(c, { isChild: true });
+          childTr.className = "border-b border-neutral-100 bg-gray-50 cursor-pointer select-none";
+          childTr.dataset.dailyToggle = childKey;
+          childTr.innerHTML = rowCells(c, { isChild: true, namePrefix: childArrow });
           body.appendChild(childTr);
+          if (childDailyExpanded) {
+            body.appendChild(renderDailyDrilldownRow(dailyRowsForCampaign(start, end, c.id), 14));
+          }
         });
       }
     }
@@ -1161,17 +1359,19 @@ function sortCreativeRows(rows) {
 function updateCreativeTableChrome() {
   const headerLabel = creativeViewMode === "objective" ? "캠페인 목적"
     : creativeViewMode === "product" ? "제품"
+    : creativeViewMode === "campaign" ? "캠페인"
     : "소재";
   document.querySelector('#tab-creative th[data-key="name"]').textContent = headerLabel;
   const titleMap = {
     all: "소재별 성과",
     objective: "캠페인 목적별 성과 (묶어보기)",
     product: "제품별 성과 (묶어보기)",
+    campaign: "캠페인별 성과 (묶어보기)",
   };
   document.getElementById("creativeTableTitle").textContent = titleMap[creativeViewMode];
 }
 
-// 서브 필터(크로스 필터) UI — "캠페인 목적별" 모드에서는 제품 버튼을, "제품별" 모드에서는
+// 서브 필터(크로스 필터) UI — "캠페인 목적별"/"캠페인별" 모드에서는 제품 버튼을, "제품별" 모드에서는
 // 목적 버튼을 아래에 표시합니다. "전체 소재" 모드에서는 서브 필터 행을 숨깁니다.
 function makeSubFilterBtn(key, label) {
   const btn = document.createElement("button");
@@ -1186,7 +1386,7 @@ function updateCreativeSubFilterUI() {
   const container = document.getElementById("creativeSubFilter");
   container.innerHTML = "";
 
-  if (creativeViewMode === "objective") {
+  if (creativeViewMode === "objective" || creativeViewMode === "campaign") {
     row.classList.remove("hidden");
     label.textContent = "제품별 필터";
     container.appendChild(makeSubFilterBtn("__all__", "전체"));
@@ -1220,8 +1420,9 @@ function renderCreativeTable(start, end) {
   const grouped = creativeViewMode !== "all";
 
   function rowCells(r, opts) {
+    const prefix = opts.namePrefix || "";
     const nameCell = opts.isChild
-      ? `<td class="py-2 pr-3 pl-8 text-left text-neutral-600 max-w-[320px] truncate whitespace-nowrap" title="${escapeHtml(r.name)}">${escapeHtml(r.name)}</td>`
+      ? `<td class="py-2 pr-3 pl-8 text-left text-neutral-600 max-w-[320px] truncate whitespace-nowrap" title="${escapeHtml(r.name)}">${prefix}${escapeHtml(r.name)}</td>`
       : `<td class="py-2.5 pr-3 text-left font-medium max-w-[320px] truncate whitespace-nowrap" title="${escapeHtml(r.name)}">${opts.nameLabel}</td>`;
     const pad = opts.isChild ? "py-2" : "py-2.5";
     const numCls = opts.isChild ? `${pad} px-2 text-right num whitespace-nowrap text-neutral-500` : `${pad} px-2 text-right num whitespace-nowrap`;
@@ -1244,22 +1445,32 @@ function renderCreativeTable(start, end) {
     `;
   }
 
+  // 일별 드릴다운은 "리프(leaf)" 행에서만 사용합니다: 그룹 모드가 아니면 최상위 행 자체가 개별
+  // 소재(리프)이고, 그룹 모드(목적별/제품별/캠페인별)에서는 펼쳐진 하위 개별 소재 행이 리프입니다.
   rows.forEach(r => {
     const groupKey = String(r.id);
     const isExpanded = grouped && expandedCreativeGroups.has(groupKey);
     const tr = document.createElement("tr");
-    tr.className = "border-b border-neutral-100 hover:bg-neutral-50" + (grouped ? " cursor-pointer select-none" : "");
-    if (grouped) tr.dataset.groupToggle = groupKey;
+    tr.className = "border-b border-neutral-100 hover:bg-neutral-50 cursor-pointer select-none";
 
-    const arrow = grouped
-      ? `<span class="inline-block w-3.5 text-neutral-400 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}">▶</span> `
-      : "";
-    const nameLabel = grouped
-      ? `${arrow}${escapeHtml(r.name)} <span class="text-neutral-400 font-normal">· 소재 ${r.itemCount}개</span>`
-      : escapeHtml(r.name);
+    let nameLabel;
+    if (grouped) {
+      tr.dataset.groupToggle = groupKey;
+      const arrow = `<span class="inline-block w-3.5 text-neutral-400 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}">▶</span> `;
+      nameLabel = `${arrow}${escapeHtml(r.name)} <span class="text-neutral-400 font-normal">· 소재 ${r.itemCount}개</span>`;
+    } else {
+      tr.dataset.dailyToggle = groupKey;
+      const dailyExpanded = expandedDailyAds.has(groupKey);
+      const arrow = `<span class="inline-block w-3.5 text-neutral-300 transition-transform duration-150 ${dailyExpanded ? "rotate-90" : ""}">▸</span> `;
+      nameLabel = `${arrow}${escapeHtml(r.name)}`;
+    }
 
     tr.innerHTML = rowCells(r, { isChild: false, nameLabel });
     body.appendChild(tr);
+
+    if (!grouped && expandedDailyAds.has(groupKey)) {
+      body.appendChild(renderDailyDrilldownRow(dailyRowsForAd(start, end, r.id), 14));
+    }
 
     if (grouped && isExpanded) {
       const children = adRowsForGroup(start, end, creativeViewMode, groupKey);
@@ -1270,10 +1481,17 @@ function renderCreativeTable(start, end) {
         body.appendChild(emptyTr);
       } else {
         children.forEach(c => {
+          const childKey = String(c.id);
+          const childDailyExpanded = expandedDailyAds.has(childKey);
+          const childArrow = `<span class="inline-block w-3 text-neutral-300 transition-transform duration-150 ${childDailyExpanded ? "rotate-90" : ""}">▸</span> `;
           const childTr = document.createElement("tr");
-          childTr.className = "border-b border-neutral-100 bg-gray-50";
-          childTr.innerHTML = rowCells(c, { isChild: true });
+          childTr.className = "border-b border-neutral-100 bg-gray-50 cursor-pointer select-none";
+          childTr.dataset.dailyToggle = childKey;
+          childTr.innerHTML = rowCells(c, { isChild: true, namePrefix: childArrow });
           body.appendChild(childTr);
+          if (childDailyExpanded) {
+            body.appendChild(renderDailyDrilldownRow(dailyRowsForAd(start, end, c.id), 14));
+          }
         });
       }
     }
@@ -1312,9 +1530,25 @@ document.getElementById("groupByToggle").addEventListener("click", (e) => {
   document.querySelectorAll("#groupByToggle .groupby-btn").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
   viewMode = btn.dataset.mode;
+  campaignSubFilter = "__all__"; // 보기 모드를 바꾸면 서브 필터는 "전체"로 초기화합니다.
   sortState = { key: "spend", dir: "desc" };
   expandedGroups.clear();
+  expandedDailyCampaigns.clear();
   updateCampaignTableChrome();
+  updateCampaignSubFilterUI();
+  renderCampaignTable(currentStart, currentEnd);
+});
+
+// 서브 필터(크로스 필터) 버튼 클릭: "목적별 묶어보기"에서는 제품으로, "제품별 묶어보기"에서는
+// 목적으로 2차 필터링합니다.
+document.getElementById("campaignSubFilter").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-subfilter]");
+  if (!btn) return;
+  document.querySelectorAll("#campaignSubFilter button").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  campaignSubFilter = btn.dataset.subfilter;
+  expandedGroups.clear();
+  expandedDailyCampaigns.clear();
   renderCampaignTable(currentStart, currentEnd);
 });
 
@@ -1323,14 +1557,23 @@ document.getElementById("campaignSearch").addEventListener("input", (e) => {
   renderCampaignTable(currentStart, currentEnd);
 });
 
-// 아코디언 드릴다운: 그룹 행 클릭(화살표 포함) 시 하위 캠페인 목록 펼치기/접기
+// 아코디언 드릴다운(그룹 행) / 일별 드릴다운(리프 행) — 클릭한 행이 어느 쪽인지에 따라 분기합니다.
 document.getElementById("campaignBody").addEventListener("click", (e) => {
-  const tr = e.target.closest("tr[data-group-toggle]");
-  if (!tr) return;
-  const key = tr.dataset.groupToggle;
-  if (expandedGroups.has(key)) expandedGroups.delete(key);
-  else expandedGroups.add(key);
-  renderCampaignTable(currentStart, currentEnd);
+  const groupTr = e.target.closest("tr[data-group-toggle]");
+  if (groupTr) {
+    const key = groupTr.dataset.groupToggle;
+    if (expandedGroups.has(key)) expandedGroups.delete(key);
+    else expandedGroups.add(key);
+    renderCampaignTable(currentStart, currentEnd);
+    return;
+  }
+  const dailyTr = e.target.closest("tr[data-daily-toggle]");
+  if (dailyTr) {
+    const key = dailyTr.dataset.dailyToggle;
+    if (expandedDailyCampaigns.has(key)) expandedDailyCampaigns.delete(key);
+    else expandedDailyCampaigns.add(key);
+    renderCampaignTable(currentStart, currentEnd);
+  }
 });
 
 /* ---------------- [소재] 탭: group-by 토글 + 서브 필터(크로스 필터) + 검색 + 아코디언 wiring ---------------- */
@@ -1344,6 +1587,7 @@ document.getElementById("creativeGroupByToggle").addEventListener("click", (e) =
   creativeSubFilter = "__all__"; // 보기 모드를 바꾸면 서브 필터는 "전체"로 초기화합니다.
   creativeSortState = { key: "spend", dir: "desc" };
   expandedCreativeGroups.clear();
+  expandedDailyAds.clear();
   updateCreativeTableChrome();
   updateCreativeSubFilterUI();
   renderCreativeTable(currentStart, currentEnd);
@@ -1358,6 +1602,7 @@ document.getElementById("creativeSubFilter").addEventListener("click", (e) => {
   btn.classList.add("active");
   creativeSubFilter = btn.dataset.subfilter;
   expandedCreativeGroups.clear();
+  expandedDailyAds.clear();
   renderCreativeTable(currentStart, currentEnd);
 });
 
@@ -1366,14 +1611,23 @@ document.getElementById("creativeSearch").addEventListener("input", (e) => {
   renderCreativeTable(currentStart, currentEnd);
 });
 
-// 아코디언 드릴다운: 그룹 행 클릭(화살표 포함) 시 하위 소재 목록 펼치기/접기
+// 아코디언 드릴다운(그룹 행) / 일별 드릴다운(리프 행) — 클릭한 행이 어느 쪽인지에 따라 분기합니다.
 document.getElementById("creativeBody").addEventListener("click", (e) => {
-  const tr = e.target.closest("tr[data-group-toggle]");
-  if (!tr) return;
-  const key = tr.dataset.groupToggle;
-  if (expandedCreativeGroups.has(key)) expandedCreativeGroups.delete(key);
-  else expandedCreativeGroups.add(key);
-  renderCreativeTable(currentStart, currentEnd);
+  const groupTr = e.target.closest("tr[data-group-toggle]");
+  if (groupTr) {
+    const key = groupTr.dataset.groupToggle;
+    if (expandedCreativeGroups.has(key)) expandedCreativeGroups.delete(key);
+    else expandedCreativeGroups.add(key);
+    renderCreativeTable(currentStart, currentEnd);
+    return;
+  }
+  const dailyTr = e.target.closest("tr[data-daily-toggle]");
+  if (dailyTr) {
+    const key = dailyTr.dataset.dailyToggle;
+    if (expandedDailyAds.has(key)) expandedDailyAds.delete(key);
+    else expandedDailyAds.add(key);
+    renderCreativeTable(currentStart, currentEnd);
+  }
 });
 
 /* ---------------- [메인] 탭: 목적별 필터 wiring ---------------- */
