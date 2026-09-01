@@ -11,6 +11,10 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<!-- PapaParse (CSV 파싱) — [데이터 업로드] 탭 전용 -->
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<!-- SheetJS (Excel 파싱) — [데이터 업로드] 탭 전용 -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <script>
   tailwind.config = {
@@ -67,6 +71,7 @@
       <button data-tab="main" class="tab-btn active">메인</button>
       <button data-tab="campaign" class="tab-btn">캠페인</button>
       <button data-tab="creative" class="tab-btn">소재</button>
+      <button data-tab="upload" class="tab-btn">데이터 업로드</button>
     </div>
 
     <div class="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 pt-3">
@@ -272,6 +277,75 @@
 
   </div>
 
+  <!-- ============ 탭: 데이터 업로드 ============ -->
+  <div id="tab-upload" class="tab-panel hidden space-y-5">
+
+    <!-- 안내 -->
+    <section class="bg-white border border-neutral-200 rounded-xl shadow-sm p-4 sm:p-5 space-y-2">
+      <h2 class="text-[15px] font-bold">Meta 보고서 파일 업로드</h2>
+      <p class="text-xs text-neutral-500 leading-relaxed">
+        Meta 광고 관리자에서 내보낸 CSV 또는 Excel(.xlsx/.xls) 보고서 파일을 업로드하면 컬럼을 자동으로 분석해
+        Supabase 테이블에 저장(UPSERT)합니다. <b class="text-neutral-700">조회는 누구나 가능</b>하지만,
+        <b class="text-neutral-700">저장은 로그인한 팀원만</b> 가능합니다 — "Supabase에 저장" 버튼을 누르면 로그인 창이 뜹니다.
+      </p>
+    </section>
+
+    <!-- 1단계: 리포트 종류 + 파일 선택 -->
+    <section class="bg-white border border-neutral-200 rounded-xl shadow-sm p-4 sm:p-5 space-y-4">
+      <div>
+        <div class="text-xs font-bold text-neutral-400 mb-2">1. 리포트 종류 선택</div>
+        <div id="uploadLevelToggle" class="inline-flex flex-wrap bg-neutral-100 rounded-lg p-1 gap-1">
+          <button data-level="campaign" class="groupby-btn active">캠페인 리포트 (meta_campaign_performance)</button>
+          <button data-level="ad" class="groupby-btn">소재(광고) 리포트 (meta_ad_performance)</button>
+        </div>
+      </div>
+      <div>
+        <div class="text-xs font-bold text-neutral-400 mb-2">2. 파일 선택 (.csv / .xlsx / .xls)</div>
+        <input id="uploadFileInput" type="file" accept=".csv,.xlsx,.xls"
+          class="text-sm border border-neutral-200 rounded-lg px-3 py-2 w-full sm:w-auto file:mr-3 file:px-3 file:py-1.5 file:rounded-md file:border-0 file:bg-neutral-100 file:text-neutral-700 file:text-sm file:font-medium" />
+        <div id="uploadFileStatus" class="text-xs text-neutral-400 mt-1.5"></div>
+      </div>
+    </section>
+
+    <!-- 2단계: 컬럼 매핑 -->
+    <section id="uploadMappingSection" class="hidden bg-white border border-neutral-200 rounded-xl shadow-sm p-4 sm:p-5 space-y-3">
+      <div class="flex items-baseline justify-between flex-wrap gap-2">
+        <h3 class="text-[14px] font-bold">3. 컬럼 매핑 확인</h3>
+        <div class="text-xs text-neutral-400">파일에서 감지한 컬럼명을 자동으로 추정해 연결했습니다. 다르면 직접 선택해 주세요.</div>
+      </div>
+      <div id="uploadMappingGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+      <div id="uploadMappingWarning" class="hidden text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 leading-relaxed"></div>
+    </section>
+
+    <!-- 3단계: 미리보기 -->
+    <section id="uploadPreviewSection" class="hidden bg-white border border-neutral-200 rounded-xl shadow-sm">
+      <div class="flex items-baseline justify-between flex-wrap gap-2 p-4 sm:p-5 pb-0">
+        <h3 class="text-[14px] font-bold">4. 미리보기 (상위 15행)</h3>
+        <div id="uploadPreviewSummary" class="text-xs text-neutral-400"></div>
+      </div>
+      <div class="overflow-x-auto p-4 sm:p-5">
+        <table class="w-full text-xs border-collapse min-w-[900px]">
+          <thead><tr id="uploadPreviewHead" class="text-[10px] uppercase tracking-wide text-neutral-400 border-b border-neutral-200"></tr></thead>
+          <tbody id="uploadPreviewBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 5단계: 저장 -->
+    <section id="uploadActionSection" class="hidden bg-white border border-neutral-200 rounded-xl shadow-sm p-4 sm:p-5 space-y-3">
+      <div class="flex flex-wrap items-center gap-3">
+        <button id="uploadCommitBtn" class="text-sm font-bold px-5 py-2.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition">Supabase에 저장</button>
+        <div id="uploadAuthStatus" class="text-xs text-neutral-500"></div>
+      </div>
+      <div id="uploadProgressWrap" class="hidden space-y-1.5">
+        <div class="w-full h-2 bg-neutral-100 rounded-full overflow-hidden"><div id="uploadProgressBar" class="h-full bg-blue-600 transition-all duration-200" style="width:0%"></div></div>
+        <div id="uploadProgressText" class="text-xs text-neutral-500"></div>
+      </div>
+      <div id="uploadResultBox" class="hidden text-xs rounded-lg px-3 py-2.5 leading-relaxed"></div>
+    </section>
+
+  </div>
+
   <footer class="text-[11.5px] text-neutral-400 leading-relaxed pt-1 pb-6">
     데이터 출처: Supabase <span class="num" id="tableNameLabel"></span> 테이블(캠페인) · <span class="num" id="adTableNameLabel"></span> 테이블(소재) (Meta Ads API로 수집) · Hook Rate = 3초 동영상 재생수 ÷ 노출수, Hold Rate = ThruPlay 건수 ÷ 3초 동영상 재생수 (소재 탭은 3초 동영상 재생수 데이터가 없어 “–”로 표시) · 페이지를 새로고침하면 Supabase의 최신 데이터를 다시 불러옵니다.
   </footer>
@@ -283,6 +357,28 @@
   <div id="loadingContent" class="text-center max-w-sm px-6">
     <div class="w-8 h-8 mx-auto mb-4 border-[3px] border-neutral-200 border-t-blue-600 rounded-full animate-spin"></div>
     <div class="text-sm text-neutral-500">Supabase에서 데이터를 불러오는 중입니다…</div>
+  </div>
+</div>
+
+<!-- 로그인 모달 — [데이터 업로드] 탭에서 "Supabase에 저장" 클릭 시에만 표시됩니다.
+     조회(SELECT)는 로그인 없이 누구나 가능하며, 이 모달은 쓰기(upsert) 작업 전에만 뜹니다. -->
+<div id="loginModal" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+  <div class="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 space-y-4">
+    <div>
+      <h3 class="text-[15px] font-bold">팀원 로그인</h3>
+      <p class="text-xs text-neutral-500 mt-1">데이터 저장(업로드)은 로그인한 팀원만 가능합니다.</p>
+    </div>
+    <div class="space-y-2.5">
+      <input id="loginEmail" type="email" autocomplete="username" placeholder="이메일"
+        class="w-full text-sm border border-neutral-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
+      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="비밀번호"
+        class="w-full text-sm border border-neutral-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
+    </div>
+    <div id="loginError" class="hidden text-xs text-red-600"></div>
+    <div class="flex items-center justify-end gap-2">
+      <button id="loginCancelBtn" class="text-sm font-medium px-4 py-2 rounded-lg text-neutral-500 hover:bg-neutral-50 transition">취소</button>
+      <button id="loginSubmitBtn" class="text-sm font-bold px-4 py-2 rounded-lg bg-neutral-900 text-white hover:bg-neutral-800 transition">로그인</button>
+    </div>
   </div>
 </div>
 
@@ -1520,6 +1616,7 @@ document.getElementById("tabNav").addEventListener("click", (e) => {
   const tab = btn.dataset.tab;
   document.querySelectorAll(".tab-panel").forEach(p => p.classList.add("hidden"));
   document.getElementById("tab-" + tab).classList.remove("hidden");
+  if (tab === "upload") refreshUploadAuthStatus();
 });
 
 /* ---------------- [캠페인] 탭: group-by 토글 + 검색 wiring ---------------- */
@@ -1641,6 +1738,474 @@ document.getElementById("mainObjectiveFilter").addEventListener("click", (e) => 
   if (currentStart && currentEnd) renderAll(currentStart, currentEnd);
 });
 
+/* ================================================================
+   [데이터 업로드] 탭 — Meta 광고 관리자에서 내보낸 CSV/Excel 리포트 파일을 업로드하면
+   컬럼을 매핑해 Supabase 테이블에 upsert 합니다.
+   - 조회(SELECT)는 로그인 없이 누구나 가능 (기존과 동일, 이 탭도 데이터를 불러오지 않는 한 접근 제한 없음)
+   - 저장(upsert = INSERT/UPDATE)은 Supabase Auth 로그인이 필요합니다. 이 제한은 클라이언트 JS가
+     아니라 Supabase의 RLS(Row Level Security) 정책이 서버 측에서 강제합니다 — 로그인 모달은 사용자
+     경험을 위한 장치일 뿐, 실제 보안은 DB 정책(별도로 전달한 SQL)에 있습니다.
+   ================================================================ */
+
+// 업로드 대상 테이블별 필드 정의.
+// - required:true 인 필드는 반드시 매핑해야 저장할 수 있습니다.
+// - required:false 인 필드(현재는 소재 탭 관련 없음, 캠페인 리포트의 3초 재생/ThruPlay만 해당)는
+//   매핑을 건너뛸 수 있고, 건너뛰면 그 컬럼은 upsert payload에서 아예 제외되어 기존에 저장된
+//   값을 덮어쓰지 않습니다(예: 3초 재생수가 없는 리포트를 올려도 기존에 수집해둔 ThruPlay 값이
+//   지워지지 않습니다).
+// - aliases 는 자동 매핑을 위한 후보 컬럼명입니다. Meta 리포트의 실제 헤더명은 언어/버전/커스텀
+//   전환 이벤트 이름에 따라 달라질 수 있어 참고용일 뿐이며, 최종 매핑은 항상 화면에서 직접
+//   확인·수정합니다.
+const UPLOAD_SCHEMAS = {
+  campaign: {
+    table: TABLE_NAME,
+    onConflict: "date,campaign_id",
+    fields: [
+      { key: "date", label: "날짜", required: true, type: "date",
+        aliases: ["일", "날짜", "day", "date", "보고 시작", "reporting starts"] },
+      { key: "campaign_id", label: "캠페인 ID", required: true, type: "string",
+        aliases: ["캠페인 id", "campaign id", "campaign_id"] },
+      { key: "campaign_name", label: "캠페인 이름", required: true, type: "string",
+        aliases: ["캠페인 이름", "캠페인명", "campaign name", "campaign"] },
+      { key: "spend", label: "지출액", required: true, type: "number",
+        aliases: ["지출 금액", "소비 금액", "amount spent", "spend"] },
+      { key: "impressions", label: "노출수", required: true, type: "number",
+        aliases: ["노출", "impressions"] },
+      { key: "clicks", label: "클릭수", required: true, type: "number",
+        aliases: ["링크 클릭", "클릭(전체)", "클릭", "link clicks", "clicks (all)", "clicks"] },
+      { key: "purchases", label: "구매전환건수", required: true, type: "number",
+        aliases: ["웹사이트 구매", "구매", "results", "purchases", "website purchases"] },
+      { key: "purchase_value", label: "구매 전환값(매출액)", required: true, type: "number",
+        aliases: ["웹사이트 구매 전환값", "구매 전환값", "전환값", "purchase conversion value", "purchases conversion value", "value"] },
+      { key: "video_3sec_views", label: "3초 동영상 재생수 (선택)", required: false, type: "number",
+        aliases: ["3초 동영상 재생", "3-second video plays", "3 초 동영상 재생"] },
+      { key: "video_thruplay_views", label: "ThruPlay 재생수 (선택)", required: false, type: "number",
+        aliases: ["thruplay", "thruplay 재생", "thruplay actions"] },
+    ],
+  },
+  ad: {
+    table: AD_TABLE_NAME,
+    onConflict: "date,ad_id",
+    fields: [
+      { key: "date", label: "날짜", required: true, type: "date",
+        aliases: ["일", "날짜", "day", "date", "보고 시작", "reporting starts"] },
+      { key: "campaign_id", label: "캠페인 ID", required: true, type: "string",
+        aliases: ["캠페인 id", "campaign id", "campaign_id"] },
+      { key: "campaign_name", label: "캠페인 이름", required: true, type: "string",
+        aliases: ["캠페인 이름", "캠페인명", "campaign name", "campaign"] },
+      { key: "adset_id", label: "광고 세트 ID", required: true, type: "string",
+        aliases: ["광고 세트 id", "ad set id", "adset id", "adset_id"] },
+      { key: "adset_name", label: "광고 세트 이름", required: true, type: "string",
+        aliases: ["광고 세트 이름", "ad set name", "adset name"] },
+      { key: "ad_id", label: "광고 ID", required: true, type: "string",
+        aliases: ["광고 id", "ad id", "ad_id"] },
+      { key: "ad_name", label: "광고(소재) 이름", required: true, type: "string",
+        aliases: ["광고 이름", "소재명", "ad name"] },
+      { key: "spend", label: "지출액", required: true, type: "number",
+        aliases: ["지출 금액", "소비 금액", "amount spent", "spend"] },
+      { key: "impressions", label: "노출수", required: true, type: "number",
+        aliases: ["노출", "impressions"] },
+      { key: "clicks", label: "클릭수", required: true, type: "number",
+        aliases: ["링크 클릭", "클릭(전체)", "클릭", "link clicks", "clicks (all)", "clicks"] },
+      { key: "purchases", label: "구매전환건수", required: true, type: "number",
+        aliases: ["웹사이트 구매", "구매", "results", "purchases", "website purchases"] },
+      { key: "purchase_value", label: "구매 전환값(매출액)", required: true, type: "number",
+        aliases: ["웹사이트 구매 전환값", "구매 전환값", "전환값", "purchase conversion value", "purchases conversion value", "value"] },
+    ],
+  },
+};
+
+// [데이터 업로드] 탭 상태
+let uploadLevel = "campaign";  // "campaign" | "ad"
+let uploadHeaders = [];        // 파일에서 감지된 원본 컬럼명 목록
+let uploadRawRows = [];        // 파일에서 읽은 원본 행 ({헤더명: 값} 객체 배열)
+let uploadMapping = {};        // { 내부 필드key: 매핑된 원본 헤더명 | "" }
+let uploadParsedRows = [];     // 매핑 + 타입 변환을 마친, upsert 대상 최종 행
+let uploadParseErrors = [];    // 행 단위 파싱 실패 목록 [{rowIndex, reason}]
+let pendingUploadAfterLogin = false;
+
+/* ---------------- [데이터 업로드] 탭: 값 파싱 helper ---------------- */
+
+// Meta 리포트의 숫자 셀은 "33,802" / "₩33,802" / "1,234.50" / "-" / "" 등 다양한 형식으로
+// 내려올 수 있어 통화 기호·쉼표·%·공백을 제거하고 파싱합니다. 빈 값/대시는 0으로 처리합니다.
+function parseMetaNumber(v) {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "number") return isFinite(v) ? v : 0;
+  const s = String(v).trim().replace(/[₩$,%\s]/g, "");
+  if (s === "" || s === "-" || s === "–" || s === "—") return 0;
+  const n = parseFloat(s);
+  return isFinite(n) ? n : 0;
+}
+
+// 날짜 셀은 "2026-05-01"(ISO) / "2026. 5. 1."(한국어 표기) / "2026/05/01" / 엑셀 Date 객체 등
+// 다양한 형식으로 내려올 수 있어 여러 패턴을 순서대로 시도합니다. 실패 시 null을 반환합니다.
+function parseMetaDate(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (m) return `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
+  m = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (m) return `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
+  m = s.match(/^(\d{4})\.\s*(\d{1,2})\.\s*(\d{1,2})\.?$/);
+  if (m) return `${m[1]}-${String(m[2]).padStart(2, "0")}-${String(m[3]).padStart(2, "0")}`;
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return null;
+}
+
+function normalizeHeaderForMatch(h) {
+  return String(h ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+// 필드별 alias 후보와 실제 파일 헤더를 비교해 가장 그럴듯한 컬럼을 자동으로 추정합니다
+// (완전 일치 우선 → 부분 포함 일치). 결과는 항상 화면에서 사용자가 직접 확인·수정할 수 있습니다.
+function guessColumnForField(field, headers) {
+  const normHeaders = headers.map(h => ({ raw: h, norm: normalizeHeaderForMatch(h) }));
+  for (const alias of field.aliases) {
+    const na = normalizeHeaderForMatch(alias);
+    const exact = normHeaders.find(h => h.norm === na);
+    if (exact) return exact.raw;
+  }
+  for (const alias of field.aliases) {
+    const na = normalizeHeaderForMatch(alias);
+    const partial = normHeaders.find(h => h.norm.includes(na) || na.includes(h.norm));
+    if (partial) return partial.raw;
+  }
+  return "";
+}
+
+// CSV 파일 파싱 (PapaParse) — header:true 로 { 헤더명: 값 } 객체 배열을 얻습니다.
+function parseCSVFile(file) {
+  return new Promise((resolve, reject) => {
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      dynamicTyping: false,
+      encoding: "UTF-8",
+      complete: (res) => resolve({ headers: res.meta.fields || [], rows: res.data }),
+      error: (err) => reject(err),
+    });
+  });
+}
+
+// Excel 파일 파싱 (SheetJS) — 첫 번째 시트를 사용하고, 날짜 셀은 JS Date 객체로 변환합니다.
+function parseExcelFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: "array", cellDates: true });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet, { defval: "", raw: true });
+        const headers = json.length ? Object.keys(json[0]) : [];
+        resolve({ headers, rows: json });
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(reader.error || new Error("파일을 읽지 못했습니다."));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/* ---------------- [데이터 업로드] 탭: 컬럼 매핑 + 미리보기 렌더링 ---------------- */
+
+function renderUploadMappingGrid() {
+  const schema = UPLOAD_SCHEMAS[uploadLevel];
+  const grid = document.getElementById("uploadMappingGrid");
+  grid.innerHTML = "";
+  schema.fields.forEach(field => {
+    const wrap = document.createElement("div");
+    wrap.className = "space-y-1";
+    const selected = uploadMapping[field.key] || "";
+    const emptyOptionLabel = field.required ? "(선택 안 함 — 필수)" : "(매핑 안 함 — 기존 값 유지)";
+    const options = [`<option value="">${emptyOptionLabel}</option>`]
+      .concat(uploadHeaders.map(h => `<option value="${escapeHtml(h)}" ${h === selected ? "selected" : ""}>${escapeHtml(h)}</option>`))
+      .join("");
+    wrap.innerHTML = `
+      <label class="text-xs font-medium text-neutral-600">${escapeHtml(field.label)}</label>
+      <select data-field="${field.key}" class="upload-mapping-select w-full text-sm border border-neutral-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400">
+        ${options}
+      </select>
+    `;
+    grid.appendChild(wrap);
+  });
+  document.getElementById("uploadMappingSection").classList.remove("hidden");
+}
+
+// 현재 매핑을 기준으로 원본 행을 최종 upsert 대상 행으로 변환합니다.
+function buildUploadRows() {
+  const schema = UPLOAD_SCHEMAS[uploadLevel];
+  const warningEl = document.getElementById("uploadMappingWarning");
+  const missingRequired = schema.fields.filter(f => f.required && !uploadMapping[f.key]);
+
+  if (missingRequired.length) {
+    warningEl.textContent = `다음 필수 항목이 매핑되지 않았습니다: ${missingRequired.map(f => f.label).join(", ")}`;
+    warningEl.classList.remove("hidden");
+    uploadParsedRows = [];
+    uploadParseErrors = [];
+    document.getElementById("uploadPreviewSection").classList.add("hidden");
+    document.getElementById("uploadActionSection").classList.add("hidden");
+    return;
+  }
+  warningEl.classList.add("hidden");
+
+  const idKey = uploadLevel === "ad" ? "ad_id" : "campaign_id";
+  uploadParsedRows = [];
+  uploadParseErrors = [];
+
+  uploadRawRows.forEach((raw, idx) => {
+    const row = {};
+    let dateError = false;
+    schema.fields.forEach(field => {
+      const col = uploadMapping[field.key];
+      if (!col) return; // 매핑하지 않은 선택 필드는 payload에서 제외 (기존 값 보존)
+      const rawVal = raw[col];
+      if (field.type === "date") {
+        const d = parseMetaDate(rawVal);
+        if (!d) { dateError = true; return; }
+        row[field.key] = d;
+      } else if (field.type === "number") {
+        row[field.key] = parseMetaNumber(rawVal);
+      } else {
+        row[field.key] = String(rawVal ?? "").trim();
+      }
+    });
+    if (dateError || !row.date || !row[idKey]) {
+      uploadParseErrors.push({ rowIndex: idx, reason: dateError ? "날짜 형식을 인식할 수 없습니다" : "필수 값이 비어 있습니다" });
+      return;
+    }
+    uploadParsedRows.push(row);
+  });
+
+  renderUploadPreview();
+}
+
+function renderUploadPreview() {
+  const schema = UPLOAD_SCHEMAS[uploadLevel];
+  const head = document.getElementById("uploadPreviewHead");
+  const body = document.getElementById("uploadPreviewBody");
+  const summary = document.getElementById("uploadPreviewSummary");
+  const mappedFields = schema.fields.filter(f => uploadMapping[f.key]);
+
+  head.innerHTML = mappedFields.map(f => `<th class="text-left font-bold py-1.5 px-2 whitespace-nowrap">${escapeHtml(f.label)}</th>`).join("");
+
+  const previewRows = uploadParsedRows.slice(0, 15);
+  body.innerHTML = previewRows.map(r => `
+    <tr class="border-b border-neutral-100">
+      ${mappedFields.map(f => `<td class="py-1.5 px-2 whitespace-nowrap ${f.type === "number" ? "text-right num" : "text-left"}">${
+        f.type === "number" ? Number(r[f.key]).toLocaleString("ko-KR") : escapeHtml(r[f.key])
+      }</td>`).join("")}
+    </tr>
+  `).join("");
+
+  const errorNote = uploadParseErrors.length ? ` · ⚠️ ${uploadParseErrors.length}행은 날짜/필수값 오류로 제외됨` : "";
+  summary.textContent = `총 ${uploadRawRows.length.toLocaleString("ko-KR")}행 중 저장 대상 ${uploadParsedRows.length.toLocaleString("ko-KR")}행${errorNote}`;
+
+  document.getElementById("uploadPreviewSection").classList.toggle("hidden", uploadRawRows.length === 0);
+  document.getElementById("uploadActionSection").classList.toggle("hidden", uploadParsedRows.length === 0);
+}
+
+/* ---------------- [데이터 업로드] 탭: wiring (리포트 종류 / 파일 선택 / 매핑) ---------------- */
+
+document.getElementById("uploadLevelToggle").addEventListener("click", (e) => {
+  const btn = e.target.closest(".groupby-btn");
+  if (!btn) return;
+  document.querySelectorAll("#uploadLevelToggle .groupby-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  uploadLevel = btn.dataset.level;
+  uploadMapping = {};
+  if (uploadHeaders.length) {
+    UPLOAD_SCHEMAS[uploadLevel].fields.forEach(f => { uploadMapping[f.key] = guessColumnForField(f, uploadHeaders); });
+    renderUploadMappingGrid();
+    buildUploadRows();
+  } else {
+    document.getElementById("uploadMappingSection").classList.add("hidden");
+    document.getElementById("uploadPreviewSection").classList.add("hidden");
+    document.getElementById("uploadActionSection").classList.add("hidden");
+  }
+});
+
+document.getElementById("uploadFileInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  const statusEl = document.getElementById("uploadFileStatus");
+  if (!file) return;
+  statusEl.textContent = "파일을 읽는 중…";
+  document.getElementById("uploadResultBox").classList.add("hidden");
+  try {
+    const ext = file.name.split(".").pop().toLowerCase();
+    let parsed;
+    if (ext === "csv") parsed = await parseCSVFile(file);
+    else if (ext === "xlsx" || ext === "xls") parsed = await parseExcelFile(file);
+    else throw new Error("csv 또는 xlsx/xls 파일만 지원합니다.");
+
+    uploadHeaders = parsed.headers;
+    uploadRawRows = parsed.rows;
+    statusEl.textContent = `"${file.name}" · ${uploadRawRows.length.toLocaleString("ko-KR")}행 · 컬럼 ${uploadHeaders.length}개 인식됨`;
+
+    uploadMapping = {};
+    UPLOAD_SCHEMAS[uploadLevel].fields.forEach(f => { uploadMapping[f.key] = guessColumnForField(f, uploadHeaders); });
+    renderUploadMappingGrid();
+    buildUploadRows();
+  } catch (err) {
+    console.error(err);
+    statusEl.textContent = `파일을 읽지 못했습니다: ${err.message || err}`;
+    uploadHeaders = [];
+    uploadRawRows = [];
+    document.getElementById("uploadMappingSection").classList.add("hidden");
+    document.getElementById("uploadPreviewSection").classList.add("hidden");
+    document.getElementById("uploadActionSection").classList.add("hidden");
+  }
+});
+
+document.getElementById("uploadMappingGrid").addEventListener("change", (e) => {
+  const sel = e.target.closest("select.upload-mapping-select");
+  if (!sel) return;
+  uploadMapping[sel.dataset.field] = sel.value;
+  buildUploadRows();
+});
+
+/* ---------------- [데이터 업로드] 탭: 로그인(Supabase Auth) + 저장(upsert) ---------------- */
+// 조회는 로그인 없이 누구나 가능하고, "Supabase에 저장" 클릭 시에만 로그인 여부를 확인합니다.
+// 실제 쓰기 권한 제한은 클라이언트 코드가 아니라 Supabase RLS 정책(별도 SQL)이 담당합니다.
+
+async function refreshUploadAuthStatus() {
+  const { data: { user } } = await sbClient.auth.getUser();
+  const el = document.getElementById("uploadAuthStatus");
+  if (user) {
+    el.innerHTML = `${escapeHtml(user.email)} 로그인됨 · <button id="uploadLogoutBtn" class="text-blue-600 hover:underline">로그아웃</button>`;
+    document.getElementById("uploadLogoutBtn").addEventListener("click", async () => {
+      await sbClient.auth.signOut();
+      refreshUploadAuthStatus();
+    });
+  } else {
+    el.textContent = "저장하려면 로그인이 필요합니다.";
+  }
+}
+
+function openLoginModal() {
+  document.getElementById("loginModal").classList.remove("hidden");
+  document.getElementById("loginError").classList.add("hidden");
+  document.getElementById("loginEmail").value = "";
+  document.getElementById("loginPassword").value = "";
+  document.getElementById("loginEmail").focus();
+}
+// closeLoginModal()은 모달을 숨기기만 합니다 — pendingUploadAfterLogin 초기화는 호출부(취소/배경
+// 클릭은 여기서 명시적으로, 로그인 성공 시에는 runUpload() 분기 판단 이후에)에서 각각 처리합니다.
+// (모달을 닫는 시점에 항상 플래그를 지워버리면, 로그인 성공 직후 모달을 닫고 나서 "로그인 후
+// 업로드를 이어서 실행해야 하는지" 를 판단하는 시점에는 이미 플래그가 꺼져 있게 되는 문제가 있었습니다.)
+function closeLoginModal() {
+  document.getElementById("loginModal").classList.add("hidden");
+}
+
+document.getElementById("loginCancelBtn").addEventListener("click", () => {
+  pendingUploadAfterLogin = false;
+  closeLoginModal();
+});
+document.getElementById("loginModal").addEventListener("click", (e) => {
+  if (e.target.id === "loginModal") {
+    pendingUploadAfterLogin = false;
+    closeLoginModal();
+  }
+});
+
+document.getElementById("loginSubmitBtn").addEventListener("click", async () => {
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const errEl = document.getElementById("loginError");
+  errEl.classList.add("hidden");
+  if (!email || !password) {
+    errEl.textContent = "이메일과 비밀번호를 입력해 주세요.";
+    errEl.classList.remove("hidden");
+    return;
+  }
+  const submitBtn = document.getElementById("loginSubmitBtn");
+  submitBtn.disabled = true;
+  submitBtn.textContent = "로그인 중…";
+  const { error } = await sbClient.auth.signInWithPassword({ email, password });
+  submitBtn.disabled = false;
+  submitBtn.textContent = "로그인";
+  if (error) {
+    errEl.textContent = "로그인에 실패했습니다: " + error.message;
+    errEl.classList.remove("hidden");
+    return;
+  }
+  closeLoginModal();
+  await refreshUploadAuthStatus();
+  if (pendingUploadAfterLogin) {
+    pendingUploadAfterLogin = false;
+    runUpload();
+  }
+});
+
+["loginEmail", "loginPassword"].forEach(id => {
+  document.getElementById(id).addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("loginSubmitBtn").click();
+  });
+});
+
+document.getElementById("uploadCommitBtn").addEventListener("click", async () => {
+  const { data: { user } } = await sbClient.auth.getUser();
+  if (!user) {
+    pendingUploadAfterLogin = true;
+    openLoginModal();
+    return;
+  }
+  runUpload();
+});
+
+// 대량 행을 한 번에 upsert하면 요청이 너무 커질 수 있어 청크(500행) 단위로 나눠 전송합니다.
+// onConflict 대상 컬럼(date,campaign_id 또는 date,ad_id)에는 Supabase 테이블에 UNIQUE 제약이
+// 있어야 합니다 — 별도로 전달한 SQL에서 함께 추가합니다.
+async function runUpload() {
+  const schema = UPLOAD_SCHEMAS[uploadLevel];
+  const rows = uploadParsedRows;
+  if (!rows.length) return;
+
+  const btn = document.getElementById("uploadCommitBtn");
+  const progressWrap = document.getElementById("uploadProgressWrap");
+  const progressBar = document.getElementById("uploadProgressBar");
+  const progressText = document.getElementById("uploadProgressText");
+  const resultBox = document.getElementById("uploadResultBox");
+
+  btn.disabled = true;
+  progressWrap.classList.remove("hidden");
+  resultBox.classList.add("hidden");
+
+  const chunkSize = 500;
+  let done = 0;
+  let failedChunks = 0;
+  let lastError = "";
+
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    const { error } = await sbClient.from(schema.table).upsert(chunk, { onConflict: schema.onConflict });
+    if (error) {
+      failedChunks++;
+      lastError = error.message;
+      console.error(error);
+    } else {
+      done += chunk.length;
+    }
+    const progressPct = Math.round(((i + chunk.length) / rows.length) * 100);
+    progressBar.style.width = progressPct + "%";
+    progressText.textContent = `${Math.min(i + chunk.length, rows.length).toLocaleString("ko-KR")} / ${rows.length.toLocaleString("ko-KR")}행 처리 중…`;
+  }
+
+  btn.disabled = false;
+  resultBox.classList.remove("hidden");
+  if (failedChunks === 0) {
+    resultBox.className = "text-xs rounded-lg px-3 py-2.5 leading-relaxed bg-emerald-50 text-emerald-700 border border-emerald-200";
+    resultBox.innerHTML = `${done.toLocaleString("ko-KR")}행 저장 완료. <button id="uploadReloadBtn" class="underline font-semibold">대시보드 새로고침</button>해서 반영된 데이터를 확인하세요.`;
+    document.getElementById("uploadReloadBtn").addEventListener("click", () => location.reload());
+  } else {
+    resultBox.className = "text-xs rounded-lg px-3 py-2.5 leading-relaxed bg-red-50 text-red-700 border border-red-200";
+    resultBox.textContent = `${done.toLocaleString("ko-KR")}행 저장, ${failedChunks}개 배치 실패 (마지막 오류: ${lastError}). 로그인 계정에 저장 권한(RLS)이 있는지 확인해 주세요.`;
+  }
+  progressText.textContent = "완료";
+}
+
 /* ---------------- master render ---------------- */
 
 function renderAll(start, end) {
@@ -1741,6 +2306,7 @@ async function init() {
     const initEnd = MAX_DATE;
     const initStart = clampDate(addDays(initEnd, -6));
     renderAll(initStart, initEnd);
+    refreshUploadAuthStatus();
 
     document.getElementById("loadingOverlay").style.opacity = "0";
     setTimeout(() => document.getElementById("loadingOverlay").remove(), 200);
