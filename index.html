@@ -248,7 +248,7 @@
     <section class="bg-white border border-neutral-200 rounded-xl shadow-sm">
       <div class="flex items-baseline justify-between flex-wrap gap-2 p-4 sm:p-5 pb-0">
         <h2 id="creativeTableTitle" class="text-[15px] font-bold">소재별 성과</h2>
-        <div class="text-xs text-neutral-400">선택 기간 내 지출이 발생한 소재만 표시 · 컬럼 헤더 클릭 시 정렬 · 소재 행 클릭 시 일별 성과 펼쳐보기 · Hook/Hold Rate는 소재 단위 동영상 조회 데이터가 없어 “–”로 표시됩니다</div>
+        <div class=”text-xs text-neutral-400”>선택 기간 내 지출이 발생한 소재만 표시 · 컬럼 헤더 클릭 시 정렬 · 소재 행 클릭 시 일별 성과 펼쳐보기 · Hook Rate = 3초 동영상 재생수 ÷ 노출수, Hold Rate = ThruPlay 건수 ÷ 3초 동영상 재생수 (데이터 업로드 탭에서 해당 컬럼을 매핑해 업로드한 기간만 정확히 계산됩니다)</div>
       </div>
       <div class="overflow-x-auto p-4 sm:p-5">
         <table class="w-full text-sm border-collapse min-w-[1420px]">
@@ -347,7 +347,7 @@
   </div>
 
   <footer class="text-[11.5px] text-neutral-400 leading-relaxed pt-1 pb-6">
-    데이터 출처: Supabase <span class="num" id="tableNameLabel"></span> 테이블(캠페인) · <span class="num" id="adTableNameLabel"></span> 테이블(소재) (Meta Ads API로 수집) · Hook Rate = 3초 동영상 재생수 ÷ 노출수, Hold Rate = ThruPlay 건수 ÷ 3초 동영상 재생수 (소재 탭은 3초 동영상 재생수 데이터가 없어 “–”로 표시) · 페이지를 새로고침하면 Supabase의 최신 데이터를 다시 불러옵니다.
+    데이터 출처: Supabase <span class=”num” id=”tableNameLabel”></span> 테이블(캠페인) · <span class=”num” id=”adTableNameLabel”></span> 테이블(소재) · Hook Rate = 3초 동영상 재생수 ÷ 노출수, Hold Rate = ThruPlay 건수 ÷ 3초 동영상 재생수 (두 지표 모두 데이터 업로드 탭에서 해당 컬럼을 매핑해 업로드한 기간만 정확히 계산됩니다) · 페이지를 새로고침하면 Supabase의 최신 데이터를 다시 불러옵니다.
   </footer>
 
 </div>
@@ -544,7 +544,7 @@ async function fetchAllAdRows() {
   while (true) {
     const { data, error } = await sbClient
       .from(AD_TABLE_NAME)
-      .select("date, campaign_id, campaign_name, adset_id, adset_name, ad_id, ad_name, spend, impressions, clicks, purchases, purchase_value")
+      .select("date, campaign_id, campaign_name, adset_id, adset_name, ad_id, ad_name, spend, impressions, clicks, video_3sec_views, video_thruplay_views, purchases, purchase_value")
       .order("date", { ascending: true })
       .range(from, from + pageSize - 1);
     if (error) throw error;
@@ -731,16 +731,19 @@ function dailyRowsForCampaign(start, end, campaignId) {
 
 /* ---------------- aggregation: [소재] 탭 (meta_ad_performance, ad 단위) ---------------- */
 
-// 소재(Ad) 단위 데이터에는 동영상 조회 지표(video_3sec_views 등)가 없어
-// Hook Rate / Hold Rate 는 항상 null("–")로 표시합니다 (0.0%로 표시하면 "재생은 됐지만 0%" 로
-// 오인될 수 있어, 아예 값이 없음을 나타내는 "–" 를 사용합니다).
+// 소재(Ad) 단위 데이터의 동영상 조회 지표(video_3sec_views, video_thruplay_views)는
+// [데이터 업로드] 탭에서 해당 컬럼을 매핑해 업로드한 날짜에 한해 채워집니다. 아직 업로드하지
+// 않은 기간은 두 값이 0으로 집계되어 Hook/Hold Rate 도 0.0%로 표시될 수 있습니다(캠페인 탭과
+// 동일한 계산 방식 — 값이 없는 기간과 실제 0%를 구분하지는 않습니다).
 function emptyAdAgg() {
-  return { spend: 0, impressions: 0, clicks: 0, purchases: 0, revenue: 0 };
+  return { spend: 0, impressions: 0, clicks: 0, video3s: 0, thruplay: 0, purchases: 0, revenue: 0 };
 }
 function addAdRow(agg, r) {
   agg.spend += Number(r.spend) || 0;
   agg.impressions += Number(r.impressions) || 0;
   agg.clicks += Number(r.clicks) || 0;
+  agg.video3s += Number(r.video_3sec_views) || 0;
+  agg.thruplay += Number(r.video_thruplay_views) || 0;
   agg.purchases += Number(r.purchases) || 0;
   agg.revenue += Number(r.purchase_value) || 0;
 }
@@ -753,8 +756,8 @@ function deriveAdRatios(agg) {
     cvr: agg.clicks ? (agg.purchases / agg.clicks) * 100 : 0,
     roas: agg.spend ? agg.revenue / agg.spend : null,
     cpa: agg.purchases ? agg.spend / agg.purchases : null,
-    hookRate: null,
-    holdRate: null,
+    hookRate: agg.impressions ? (agg.video3s / agg.impressions) * 100 : 0,
+    holdRate: agg.video3s ? (agg.thruplay / agg.video3s) * 100 : 0,
   };
 }
 function adRowsInRange(start, end) {
@@ -1778,9 +1781,9 @@ const UPLOAD_SCHEMAS = {
       { key: "purchase_value", label: "구매 전환값(매출액)", required: true, type: "number",
         aliases: ["웹사이트 구매 전환값", "구매 전환값", "전환값", "purchase conversion value", "purchases conversion value", "value"] },
       { key: "video_3sec_views", label: "3초 동영상 재생수 (선택)", required: false, type: "number",
-        aliases: ["3초 동영상 재생", "3-second video plays", "3 초 동영상 재생"] },
+        aliases: ["동영상 3초 이상 재생", "3초 동영상 재생", "3-second video plays", "3 초 동영상 재생", "3-second video views"] },
       { key: "video_thruplay_views", label: "ThruPlay 재생수 (선택)", required: false, type: "number",
-        aliases: ["thruplay", "thruplay 재생", "thruplay actions"] },
+        aliases: ["thruplay", "thruplay 재생", "thruplay actions", "쓰루플레이", "동영상 재생 - thruplay", "thruplay 동영상 재생"] },
     ],
   },
   ad: {
@@ -1811,6 +1814,10 @@ const UPLOAD_SCHEMAS = {
         aliases: ["웹사이트 구매", "구매", "results", "purchases", "website purchases"] },
       { key: "purchase_value", label: "구매 전환값(매출액)", required: true, type: "number",
         aliases: ["웹사이트 구매 전환값", "구매 전환값", "전환값", "purchase conversion value", "purchases conversion value", "value"] },
+      { key: "video_3sec_views", label: "3초 동영상 재생수 (선택)", required: false, type: "number",
+        aliases: ["동영상 3초 이상 재생", "3초 동영상 재생", "3-second video plays", "3 초 동영상 재생", "3-second video views"] },
+      { key: "video_thruplay_views", label: "ThruPlay 재생수 (선택)", required: false, type: "number",
+        aliases: ["thruplay", "thruplay 재생", "thruplay actions", "쓰루플레이", "동영상 재생 - thruplay", "thruplay 동영상 재생"] },
     ],
   },
 };
