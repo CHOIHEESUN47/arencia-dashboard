@@ -1164,7 +1164,7 @@
       { label: '총 구매건수', value: `${fmtNum(t.orders)}건`, delta: null },
       { label: '전환율', value: t.conversionRate != null ? `${t.conversionRate.toFixed(2)}%` : '-', delta: null },
       { label: 'CPA', value: t.cpa != null ? fmtWon(t.cpa) : '-', delta: null },
-      { label: 'ROAS', value: t.roas != null ? `${t.roas.toFixed(2)}x` : '-', delta: null },
+      { label: 'ROAS', value: t.roas != null ? `${(t.roas * 100).toFixed(1)}%` : '-', delta: null },
     ]);
 
     if (!d.hasData) {
@@ -1255,7 +1255,7 @@
           <td class="num">${fmtWon(x.revenue)}</td>
           <td class="num">${x.conversionRate != null ? x.conversionRate.toFixed(2) + '%' : '-'}</td>
           <td class="num">${x.cpa != null ? fmtWon(x.cpa) : '-'}</td>
-          <td class="num">${x.roas != null ? x.roas.toFixed(2) + 'x' : '-'}</td>
+          <td class="num">${x.roas != null ? (x.roas * 100).toFixed(1) + '%' : '-'}</td>
         </tr>
       `).join('');
     }
@@ -1748,7 +1748,7 @@
         date, spend, clicks, orders, revenue,
         conversionRate: clicks > 0 ? (orders / clicks) * 100 : null, // NaN/Infinity 방지: 분모 0이면 null
         cpa: orders > 0 ? spend / orders : null,
-        roas: spend > 0 ? revenue / spend : null, // 배수(예: 3.2 = 320%) — 표시할 때 x 붙임
+        roas: spend > 0 ? revenue / spend : null, // 배수로 저장(예: 3.2 = 320%) — 렌더링 시 *100 하고 %로 표시
       };
     });
 
