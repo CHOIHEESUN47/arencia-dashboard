@@ -74,6 +74,9 @@
   header {
     padding: 20px 28px 0; position: sticky; top: 0; background: var(--page); z-index: 10;
   }
+  header .header-inner {
+    max-width: 1320px; margin: 0 auto;
+  }
   h1 { font-size: 19px; margin: 0 0 4px; }
   .subtitle { color: var(--text-secondary); font-size: 13px; margin-bottom: 16px; }
 
@@ -216,6 +219,22 @@
 
   .data-range-note { color: var(--text-muted); margin-left: 8px; }
 
+  /* ---- 팀원용 용어 설명 카드 ---- */
+  .glossary-card {
+    background: color-mix(in srgb, var(--series-1) 8%, var(--surface-1));
+    border: 1px solid color-mix(in srgb, var(--series-1) 25%, var(--border));
+    border-radius: 10px; padding: 12px 16px; margin: 10px 0 16px;
+    font-size: 12.5px; color: var(--text-secondary); line-height: 1.55;
+  }
+  .glossary-card strong { color: var(--text-primary); }
+  .glossary-card .g-term { font-weight: 700; color: var(--series-1); margin-right: 4px; }
+  .glossary-card ul { margin: 4px 0 0; padding-left: 18px; }
+  .glossary-card li { margin-bottom: 3px; }
+  .metric-tip {
+    display: block; font-size: 11.5px; font-weight: 400; color: var(--text-muted);
+    margin-top: 2px;
+  }
+
   /* ---- 빈 상태 / 로그인 필요 안내 ---- */
   .empty-state {
     text-align: center; padding: 48px 20px; color: var(--text-secondary);
@@ -245,6 +264,7 @@
 </div>
 
 <header>
+  <div class="header-inner">
   <h1>자사몰 데이터 분석 대시보드</h1>
   <div class="subtitle">
     주문 원천 데이터 기준 · 마지막 갱신: <span id="lastUpdated">-</span>
@@ -270,6 +290,7 @@
     <input type="date" id="filterEnd" class="ui-input">
     <button class="btn btn-primary" id="btnApplyFilter">조회</button>
     <span class="empty-note" id="filterNote" style="margin-left:4px;"></span>
+  </div>
   </div>
 </header>
 
@@ -298,6 +319,9 @@
     </div>
 
     <div class="section-title">객단가(AOV) 추이 — 신규 / 재구매 / 비회원</div>
+    <div class="glossary-card">
+      <span class="g-term">AOV(객단가)</span>선택 기간 동안 <strong>주문 1건당 평균 결제금액</strong>입니다. 신규/재구매/비회원 고객군별로 나눠 보면 어떤 고객군이 더 큰 단가로 구매하는지 알 수 있습니다.
+    </div>
     <div class="card">
       <h3>주차별 AOV<span class="hint">단위: 원</span></h3>
       <canvas id="chartAov" height="90"></canvas>
@@ -344,6 +368,9 @@
     </div>
 
     <div class="section-title">회원 vs 비회원 재구매율 추이</div>
+    <div class="glossary-card">
+      <span class="g-term">재구매율</span>해당 월에 구매한 고객 중 <strong>이전에도 구매 이력이 있던 고객의 비율</strong>입니다. 값이 높을수록 기존 고객이 다시 찾아오고 있다는 뜻이고, 낮을수록 신규 유입에 더 의존하고 있다는 의미입니다.
+    </div>
     <div class="card">
       <h3>월별 재구매율<span class="hint">비회원 = 주문자명+전화번호 식별 기준</span></h3>
       <canvas id="chartRepeatRateTrend" height="90"></canvas>
@@ -366,6 +393,14 @@
     <div class="grid grid-4" id="rfmKpis"></div>
 
     <div class="section-title">코호트 리텐션 테이블<span class="member-only-badge">회원 전용</span></div>
+    <div class="glossary-card">
+      <span class="g-term">코호트 리텐션(Cohort Retention)</span>이란, 특정 월(주)에 <strong>첫 구매를 한 고객 집단(코호트)</strong>이 시간이 지남에 따라 얼마나 재구매를 이어가는지 보여주는 잔존율 지표입니다.
+      <ul>
+        <li>행(가장 왼쪽)은 "언제 처음 구매했는지" 기준으로 묶은 고객 그룹입니다.</li>
+        <li>열(M0, M1, M2 …)은 첫 구매 후 몇 개월이 지났는지를 뜻합니다.</li>
+        <li>셀 값은 "그 시점까지 다시 구매한 고객 비율(%)"이며, 값이 오른쪽으로 갈수록 낮아지는 것이 일반적입니다. 값이 잘 떨어지지 않을수록 고객이 오래 남아있다는 뜻입니다.</li>
+      </ul>
+    </div>
     <div class="card">
       <h3>가입(최초구매) 월 기준 코호트 리텐션<span class="hint">행: 코호트 월 / 열: 경과 개월</span></h3>
       <div style="overflow-x:auto;">
@@ -374,6 +409,16 @@
     </div>
 
     <div class="section-title">RFM 세그먼트</div>
+    <div class="glossary-card">
+      <span class="g-term">RFM 세그먼트</span>는 구매 최근성(<strong>R</strong>ecency) · 구매 빈도(<strong>F</strong>requency) · 구매 금액(<strong>M</strong>onetary)을 기준으로 고객 가치를 분류한 표식입니다.
+      <ul>
+        <li><strong>충성(VIP) 고객</strong> — 구매 횟수가 많은 핵심 고객</li>
+        <li><strong>우수 고객</strong> — 2회 이상 구매한 안정적인 재구매 고객</li>
+        <li><strong>신규 고객</strong> — 최근 30일 내 첫 구매만 한 고객</li>
+        <li><strong>이탈위험 고객</strong> — 마지막 구매 후 오래(120일 초과) 재구매가 없는 고객</li>
+        <li><strong>일반 고객</strong> — 위에 해당하지 않는 나머지 고객</li>
+      </ul>
+    </div>
     <div class="grid grid-2">
       <div class="card">
         <h3>세그먼트별 고객 수 분포</h3>
@@ -386,6 +431,9 @@
     </div>
 
     <div class="section-title">세그먼트별 평균 LTV</div>
+    <div class="glossary-card">
+      <span class="g-term">LTV(Lifetime Value, 고객 생애 가치)</span>는 한 고객이 <strong>지금까지 누적으로 결제한 총 금액의 평균</strong>입니다. 세그먼트별 LTV를 비교하면 어떤 고객군이 실제로 매출에 가장 크게 기여하는지 알 수 있습니다.
+    </div>
     <div class="card">
       <table id="rfmTable"><thead>
         <tr><th>세그먼트</th><th class="num">고객 수</th><th class="num">매출 기여도</th><th class="num">평균 LTV</th><th class="num">평균 최근구매일(일 전)</th></tr>
@@ -592,6 +640,25 @@
     };
   }
 
+  // 수평 막대(indexAxis:'y') 전용 옵션 헬퍼.
+  // Chart.js는 수평 막대에서 카테고리축/값축이 서로 뒤바뀐다 (y=카테고리, x=값).
+  // baseBarOptions를 그대로 재사용하면 카테고리(y) 틱에 숫자 포맷터가 걸리고
+  // 툴팁이 ctx.parsed.y(=카테고리 인덱스)를 읽어 값이 틀어지는 버그가 생긴다.
+  function baseBarOptionsH(valueFmt) {
+    return {
+      responsive: true,
+      indexAxis: 'y',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => valueFmt(ctx.parsed.x) } },
+      },
+      scales: {
+        x: { grid: baseGrid, ticks: { ...baseTicks, callback: (v) => valueFmt(v) } },
+        y: { grid: { display: false }, ticks: { ...baseTicks } },
+      },
+    };
+  }
+
   /* ============================================================
      2. 탭 콘텐츠 / 빈 상태 전환 헬퍼
      ============================================================ */
@@ -783,7 +850,7 @@
     safeChart('chartRfmCount', {
       type: 'bar',
       data: { labels: seg.map((s) => s.name), datasets: [{ data: seg.map((s) => s.count), backgroundColor: palette(), borderRadius: 4, maxBarThickness: 44 }] },
-      options: { ...baseBarOptions((v) => `${fmtNum(v)}명`), indexAxis: 'y' },
+      options: baseBarOptionsH((v) => `${fmtNum(v)}명`),
     });
 
     const totalRevenue = seg.reduce((s, x) => s + x.revenueShare, 0) || 1;
@@ -820,13 +887,13 @@
     safeChart('chartBestByRevenue', {
       type: 'bar',
       data: { labels: d.bestByRevenue.map((x) => x.name), datasets: [{ data: d.bestByRevenue.map((x) => x.revenue), backgroundColor: token('--series-1'), borderRadius: 4, maxBarThickness: 20 }] },
-      options: { ...baseBarOptions((v) => fmtWon(v)), indexAxis: 'y' },
+      options: baseBarOptionsH((v) => fmtWon(v)),
     });
 
     safeChart('chartBestByQty', {
       type: 'bar',
       data: { labels: d.bestByQty.map((x) => x.name), datasets: [{ data: d.bestByQty.map((x) => x.qty), backgroundColor: token('--series-2'), borderRadius: 4, maxBarThickness: 20 }] },
-      options: { ...baseBarOptions((v) => `${fmtNum(v)}개`), indexAxis: 'y' },
+      options: baseBarOptionsH((v) => `${fmtNum(v)}개`),
     });
 
     const optTbody = document.querySelector('#optionTable tbody');
@@ -941,6 +1008,19 @@
   }
   function monthKeyOf(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
 
+  // 카페24 원본 결제수단은 "신용카드,쿠폰", "무통장입금,쿠폰,선불금" 처럼
+  // 여러 수단이 콤마로 뒤섞여 들어오는 경우가 많아, 차트/표에 쓸 대표 유형 하나로 정규화한다.
+  function normalizePaymentMethod(raw) {
+    const s = (raw || '').trim();
+    if (!s) return '기타/선불금';
+    if (s.includes('신용카드')) return '신용카드';
+    if (s.includes('무통장') || s.includes('가상계좌')) return '무통장입금';
+    if (s.includes('계좌이체')) return '계좌이체';
+    if (s.includes('휴대폰')) return '휴대폰결제';
+    if (s.includes('카카오페이') || s.includes('네이버페이') || s.includes('토스')) return '간편결제';
+    return '기타/선불금';
+  }
+
   function buildSalesAnalytics(rangeOrders, orderIdToNth) {
     const paid = rangeOrders.filter((o) => o.order_status === 'paid');
     const canceled = rangeOrders.filter((o) => o.order_status !== 'paid');
@@ -960,7 +1040,7 @@
       dowSums[(d.getDay() + 6) % 7] += o.order_total_amount;
       hourSums[d.getHours()] += o.order_total_amount;
 
-      const pm = o.payment_method || '기타';
+      const pm = normalizePaymentMethod(o.payment_method);
       if (!payMethodMap.has(pm)) payMethodMap.set(pm, { name: pm, revenue: 0, orders: 0 });
       const rec = payMethodMap.get(pm);
       rec.revenue += o.order_total_amount;
@@ -1190,12 +1270,30 @@
 
   function fmtDateLocal(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 
-  function setDefaultDateRange() {
+  // 최초 접속 시엔 실제 데이터가 없어 "오늘" 기준으로는 기본 기간을 정할 수 없으므로
+  // (예: 8/17~31 테스트 데이터만 있는데 "오늘"이 9월이면 최근 7일이 전부 빈 상태가 됨)
+  // 여기서는 값을 세팅하지 않고 비워둔 채로 두고, loadDashboardData()가 데이터를 받아온 뒤
+  // applyDefaultDateRangeFromData()로 "데이터의 최근 주문일 기준 최근 7일"을 계산해 채운다.
+  let dateRangeInitialized = false;
+
+  function setDateRangeByDays(days, endDate) {
+    const end = endDate ? new Date(endDate) : new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - (days - 1)); // "최근 N일" = 종료일 포함 N일
+    els2.filterStart.value = fmtDateLocal(start);
+    els2.filterEnd.value = fmtDateLocal(end);
+  }
+
+  // 데이터의 최근 주문일시를 기준으로 "최근 7일"을 기본값으로 설정하고 7일 버튼을 활성화한다.
+  function applyDefaultDateRangeFromData(allTimeRows) {
     if (!els2.filterStart || !els2.filterEnd) return;
-    const today = new Date();
-    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    els2.filterStart.value = fmtDateLocal(firstOfMonth);
-    els2.filterEnd.value = fmtDateLocal(today);
+    const dates = (allTimeRows || []).map((r) => r.order_datetime).filter(Boolean).sort();
+    const lastOrderDate = dates.length ? new Date(dates[dates.length - 1]) : new Date();
+    setDateRangeByDays(7, lastOrderDate);
+    clearPresetActive();
+    const btn7 = els2.presetGroup?.querySelector('.preset-btn[data-preset="7"]');
+    btn7?.classList.add('active');
+    dateRangeInitialized = true;
   }
 
   function clearPresetActive() {
@@ -1208,11 +1306,7 @@
       const btn = e.target.closest('.preset-btn');
       if (!btn) return;
       const days = Number(btn.dataset.preset);
-      const end = new Date();
-      const start = new Date();
-      start.setDate(start.getDate() - (days - 1)); // "최근 N일" = 오늘 포함 N일
-      els2.filterStart.value = fmtDateLocal(start);
-      els2.filterEnd.value = fmtDateLocal(end);
+      setDateRangeByDays(days);
       clearPresetActive();
       btn.classList.add('active');
       loadDashboardData();
@@ -1245,15 +1339,12 @@
       return;
     }
 
-    const startDate = els2.filterStart ? els2.filterStart.value : '';
-    const endDate = els2.filterEnd ? els2.filterEnd.value : '';
-
-    let allTimeRows, rangeRows;
+    // 1) 전체 이력(allTimeRows)을 먼저 받아온다 — 최초 접속 시 "최근 7일" 기본값을
+    //    데이터의 실제 최근 주문일 기준으로 계산하려면 데이터가 먼저 있어야 하기 때문에
+    //    (기존의 Promise.all 병렬 조회를 순차 조회로 변경) allTimeRows → 기본기간 계산 → rangeRows 순서로 진행한다.
+    let allTimeRows;
     try {
-      [allTimeRows, rangeRows] = await Promise.all([
-        fetchOrderItems(sharedSupabaseClient),
-        fetchOrderItems(sharedSupabaseClient, { startISO: toRangeStartISO(startDate), endISO: toRangeEndISO(endDate) }),
-      ]);
+      allTimeRows = await fetchOrderItems(sharedSupabaseClient);
     } catch (err) {
       console.error('[대시보드] 데이터 조회 실패', err);
       if (els2.filterNote) els2.filterNote.textContent = '데이터 조회 중 오류가 발생했습니다 (콘솔 확인).';
@@ -1263,12 +1354,32 @@
 
     if (els2.lastUpdated) els2.lastUpdated.textContent = new Date().toLocaleString('ko-KR');
     updateDataRangeNote(allTimeRows);
-    if (els2.filterNote) els2.filterNote.textContent = `전체 ${fmtNum(allTimeRows.length)}행 · 선택 기간 ${fmtNum(rangeRows.length)}행`;
 
     if (allTimeRows.length === 0) {
+      if (els2.filterNote) els2.filterNote.textContent = '전체 0행';
       showGlobalEmptyState('업로드된 주문 데이터가 없습니다', '"데이터 업로드" 탭에서 카페24 주문 CSV를 먼저 업로드해주세요.');
       return;
     }
+
+    // 최초 접속(기간 미설정) 시에만 데이터 기준 "최근 7일"을 기본값으로 채운다.
+    if (!dateRangeInitialized || !els2.filterStart?.value || !els2.filterEnd?.value) {
+      applyDefaultDateRangeFromData(allTimeRows);
+    }
+
+    const startDate = els2.filterStart ? els2.filterStart.value : '';
+    const endDate = els2.filterEnd ? els2.filterEnd.value : '';
+
+    let rangeRows;
+    try {
+      rangeRows = await fetchOrderItems(sharedSupabaseClient, { startISO: toRangeStartISO(startDate), endISO: toRangeEndISO(endDate) });
+    } catch (err) {
+      console.error('[대시보드] 데이터 조회 실패', err);
+      if (els2.filterNote) els2.filterNote.textContent = '데이터 조회 중 오류가 발생했습니다 (콘솔 확인).';
+      showGlobalEmptyState('데이터 조회 오류', '브라우저 콘솔(F12)에서 오류 메시지를 확인해주세요.');
+      return;
+    }
+
+    if (els2.filterNote) els2.filterNote.textContent = `전체 ${fmtNum(allTimeRows.length)}행 · 선택 기간 ${fmtNum(rangeRows.length)}행`;
 
     const allOrders = toOrders(allTimeRows);
     const rangeOrders = toOrders(rangeRows);
@@ -1685,7 +1796,8 @@
      12. 부트스트랩
      ============================================================ */
   function boot() {
-    setDefaultDateRange();
+    // 날짜 필터 기본값은 loadDashboardData()가 데이터를 받아온 뒤
+    // applyDefaultDateRangeFromData()로 채운다 (데이터의 최근 주문일 기준 "최근 7일").
     sharedSupabaseClient = createSharedSupabaseClient();
 
     if (els2.btnApplyFilter) {
