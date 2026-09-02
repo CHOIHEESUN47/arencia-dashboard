@@ -729,6 +729,10 @@
   }
   function fmtWon(n) { return '₩' + Math.round(n || 0).toLocaleString('ko-KR'); }
   function fmtNum(n) { return Math.round(n || 0).toLocaleString('ko-KR'); }
+  // 전환율/ROAS 등 %값 표시 전용 — 소수점 1자리로 통일.
+  // Chart.js가 y축 눈금을 자동 계산할 때 부동소수점 오차로 "5.8000000000000001%" 같은 값이 그대로
+  // 라벨에 찍히는 문제가 있어, 축 눈금 콜백에서도 반드시 이 함수(또는 Number(v).toFixed(1))로 반올림해서 표시한다.
+  function fmtPct1(v) { return v == null || Number.isNaN(v) ? '-' : `${Number(v).toFixed(1)}%`; }
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
@@ -914,7 +918,7 @@
     const visitorTrendEmptyNote = document.getElementById('visitorTrendEmptyNote');
     const visitorTrendCanvas = document.getElementById('chartVisitorTrend');
     if (conversionAvgEl) {
-      conversionAvgEl.textContent = d.conversion.hasData && d.conversion.avgRate != null ? `${d.conversion.avgRate.toFixed(2)}%` : '-';
+      conversionAvgEl.textContent = d.conversion.hasData ? fmtPct1(d.conversion.avgRate) : '-';
     }
     if (d.conversion.hasData) {
       if (conversionEmptyNote) conversionEmptyNote.style.display = 'none';
@@ -953,11 +957,11 @@
           interaction: { mode: 'index', intersect: false },
           plugins: {
             legend: { display: false },
-            tooltip: { callbacks: { label: (ctx) => `전환율: ${ctx.parsed.y == null ? '-' : ctx.parsed.y.toFixed(2) + '%'}` } },
+            tooltip: { callbacks: { label: (ctx) => `전환율: ${fmtPct1(ctx.parsed.y)}` } },
           },
           scales: {
             x: { grid: { display: false }, ticks: { ...baseTicks, maxRotation: 0, autoSkip: true } },
-            y: { grid: baseGrid, ticks: { ...baseTicks, callback: (v) => `${v}%` } },
+            y: { grid: baseGrid, ticks: { ...baseTicks, callback: (v) => fmtPct1(v) } },
           },
         },
       });
@@ -1162,7 +1166,7 @@
       { label: '총 광고비', value: fmtWon(t.spend), delta: null },
       { label: '총 클릭수', value: `${fmtNum(t.clicks)}회`, delta: null },
       { label: '총 구매건수', value: `${fmtNum(t.orders)}건`, delta: null },
-      { label: '전환율', value: t.conversionRate != null ? `${t.conversionRate.toFixed(2)}%` : '-', delta: null },
+      { label: '전환율', value: fmtPct1(t.conversionRate), delta: null },
       { label: 'CPA', value: t.cpa != null ? fmtWon(t.cpa) : '-', delta: null },
       { label: 'ROAS', value: t.roas != null ? `${(t.roas * 100).toFixed(1)}%` : '-', delta: null },
     ]);
@@ -1191,11 +1195,11 @@
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
-          tooltip: { callbacks: { label: (ctx) => `전환율: ${ctx.parsed.y == null ? '-' : ctx.parsed.y.toFixed(2) + '%'}` } },
+          tooltip: { callbacks: { label: (ctx) => `전환율: ${fmtPct1(ctx.parsed.y)}` } },
         },
         scales: {
           x: { grid: { display: false }, ticks: { ...baseTicks, maxRotation: 0, autoSkip: true } },
-          y: { grid: baseGrid, ticks: { ...baseTicks, callback: (v) => `${v}%` } },
+          y: { grid: baseGrid, ticks: { ...baseTicks, callback: (v) => fmtPct1(v) } },
         },
       },
     });
@@ -1253,7 +1257,7 @@
           <td class="num">${fmtNum(x.clicks)}</td>
           <td class="num">${fmtNum(x.orders)}</td>
           <td class="num">${fmtWon(x.revenue)}</td>
-          <td class="num">${x.conversionRate != null ? x.conversionRate.toFixed(2) + '%' : '-'}</td>
+          <td class="num">${fmtPct1(x.conversionRate)}</td>
           <td class="num">${x.cpa != null ? fmtWon(x.cpa) : '-'}</td>
           <td class="num">${x.roas != null ? (x.roas * 100).toFixed(1) + '%' : '-'}</td>
         </tr>
