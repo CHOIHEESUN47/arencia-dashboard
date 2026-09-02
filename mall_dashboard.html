@@ -306,9 +306,14 @@
 
     <div class="grid grid-4" id="salesKpis"></div>
 
-    <div class="section-title">방문자 전환율</div>
+    <div class="section-title">방문자 / 전환율</div>
     <div class="glossary-card">
       <span class="g-term">전환율(Conversion Rate)</span>선택 기간 동안 <strong>방문자 중 실제로 결제까지 이어진 비율</strong>입니다 (결제 완료 주문수 ÷ 방문수 × 100). 카페24 애널리틱스는 어느 주문이 어느 방문에서 나왔는지까지는 알려주지 않기 때문에, 회원/비회원으로 나누지 않고 <strong>전체 기준</strong>으로만 계산합니다. "데이터 업로드" 탭에서 방문자 데이터를 먼저 올려야 표시됩니다.
+    </div>
+    <div class="card">
+      <h3>일별 방문자수 추이<span class="hint">명</span></h3>
+      <canvas id="chartVisitorTrend" height="90"></canvas>
+      <div class="empty-note" id="visitorTrendEmptyNote" style="display:none;">선택 기간에 업로드된 방문자 데이터가 없습니다. "데이터 업로드" 탭에서 방문자 CSV를 먼저 업로드해주세요.</div>
     </div>
     <div class="grid grid-2">
       <div class="card stat-tile">
@@ -822,16 +827,41 @@
       `).join('') : '<tr><td colspan="4" class="empty-note">데이터 없음</td></tr>';
     }
 
-    // 방문자 전환율
+    // 방문자 / 전환율
     const conversionAvgEl = document.getElementById('conversionAvgValue');
     const conversionEmptyNote = document.getElementById('conversionEmptyNote');
     const conversionCanvas = document.getElementById('chartConversionTrend');
+    const visitorTrendEmptyNote = document.getElementById('visitorTrendEmptyNote');
+    const visitorTrendCanvas = document.getElementById('chartVisitorTrend');
     if (conversionAvgEl) {
       conversionAvgEl.textContent = d.conversion.hasData && d.conversion.avgRate != null ? `${d.conversion.avgRate.toFixed(2)}%` : '-';
     }
     if (d.conversion.hasData) {
       if (conversionEmptyNote) conversionEmptyNote.style.display = 'none';
       if (conversionCanvas) conversionCanvas.style.display = '';
+      if (visitorTrendEmptyNote) visitorTrendEmptyNote.style.display = 'none';
+      if (visitorTrendCanvas) visitorTrendCanvas.style.display = '';
+
+      safeChart('chartVisitorTrend', {
+        type: 'line',
+        data: {
+          labels: d.conversion.labels,
+          datasets: [{ label: '방문수', data: d.conversion.visits, borderColor: token('--series-2'), backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2, tension: 0.25, spanGaps: true }],
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: (ctx) => `방문수: ${ctx.parsed.y == null ? '-' : fmtNum(ctx.parsed.y) + '명'}` } },
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { ...baseTicks, maxRotation: 0, autoSkip: true } },
+            y: { grid: baseGrid, ticks: { ...baseTicks, callback: (v) => fmtNum(v) } },
+          },
+        },
+      });
+
       safeChart('chartConversionTrend', {
         type: 'line',
         data: {
@@ -854,6 +884,8 @@
     } else {
       if (conversionEmptyNote) conversionEmptyNote.style.display = '';
       if (conversionCanvas) conversionCanvas.style.display = 'none';
+      if (visitorTrendEmptyNote) visitorTrendEmptyNote.style.display = '';
+      if (visitorTrendCanvas) visitorTrendCanvas.style.display = 'none';
     }
   }
 
@@ -1231,6 +1263,7 @@
         avgRate: avgConversionRate,
         labels: conversionDays.map((d) => d.date),
         rates: conversionDays.map((d) => (d.visits ? +((d.orders / d.visits) * 100).toFixed(2) : null)),
+        visits: conversionDays.map((d) => d.visits),
       },
     };
   }
