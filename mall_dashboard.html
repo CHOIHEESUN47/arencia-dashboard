@@ -171,6 +171,22 @@
 
   .warning-list { font-size: 12px; color: var(--text-secondary); max-height: 160px; overflow-y: auto; }
   .warning-list li { margin-bottom: 3px; }
+
+  /* ---- 기간 필터 바 ---- */
+  .filter-bar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 10px 0 14px; font-size: 13px; color: var(--text-secondary);
+  }
+  .filter-bar label { font-weight: 600; color: var(--text-primary); }
+  .filter-bar input[type="date"] { min-width: 140px; }
+
+  /* ---- 빈 상태 / 로그인 필요 안내 ---- */
+  .empty-state {
+    text-align: center; padding: 48px 20px; color: var(--text-secondary);
+  }
+  .empty-state .icon { font-size: 32px; margin-bottom: 10px; }
+  .empty-state .title { font-size: 15px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+  .empty-state .desc { font-size: 13px; color: var(--text-muted); }
 </style>
 </head>
 <body>
@@ -185,6 +201,15 @@
     <button data-tab="product">상품 &amp; 옵션</button>
     <button data-tab="upload">데이터 업로드</button>
   </nav>
+
+  <div class="filter-bar" id="filterBar">
+    <label for="filterStart">조회 기간</label>
+    <input type="date" id="filterStart" class="ui-input">
+    <span>~</span>
+    <input type="date" id="filterEnd" class="ui-input">
+    <button class="btn btn-primary" id="btnApplyFilter">조회</button>
+    <span class="empty-note" id="filterNote" style="margin-left:4px;"></span>
+  </div>
 </header>
 
 <main>
@@ -193,6 +218,9 @@
   <!-- TAB 1. 매출 & 결제                                             -->
   <!-- ============================================================ -->
   <section class="panel active" id="panel-sales">
+
+    <div class="card empty-state" id="salesEmptyState" style="display:none;"></div>
+    <div id="salesContent">
 
     <div class="grid grid-4" id="salesKpis"></div>
 
@@ -228,12 +256,17 @@
       </div>
     </div>
 
+    </div><!-- /#salesContent -->
+
   </section>
 
   <!-- ============================================================ -->
   <!-- TAB 2. 재구매 & 주기                                           -->
   <!-- ============================================================ -->
   <section class="panel" id="panel-repeat">
+
+    <div class="card empty-state" id="repeatEmptyState" style="display:none;"></div>
+    <div id="repeatContent">
 
     <div class="grid grid-4" id="repeatKpis"></div>
 
@@ -255,13 +288,19 @@
       <canvas id="chartRepeatRateTrend" height="90"></canvas>
     </div>
 
+    </div><!-- /#repeatContent -->
+
   </section>
 
   <!-- ============================================================ -->
   <!-- TAB 3. RFM & 코호트 (회원 전용)                                -->
   <!-- ============================================================ -->
   <section class="panel" id="panel-rfm">
-    <div class="empty-note" style="margin-bottom:14px;">회원 식별키(member_id)가 있는 주문만 집계됩니다. 비회원 주문은 이 탭에서 제외됩니다.</div>
+
+    <div class="card empty-state" id="rfmEmptyState" style="display:none;"></div>
+    <div id="rfmContent">
+
+    <div class="empty-note" style="margin-bottom:14px;">회원 식별키(member_id)가 있는 주문만 집계됩니다. 비회원 주문은 이 탭에서 제외됩니다. RFM/코호트는 상단 기간 필터와 무관하게 <strong>전체 구매 이력</strong> 기준이며, 최근성(Recency)은 조회 종료일을 기준으로 계산됩니다.</div>
 
     <div class="grid grid-4" id="rfmKpis"></div>
 
@@ -292,12 +331,17 @@
       </thead><tbody></tbody></table>
     </div>
 
+    </div><!-- /#rfmContent -->
+
   </section>
 
   <!-- ============================================================ -->
   <!-- TAB 4. 상품 & 옵션                                             -->
   <!-- ============================================================ -->
   <section class="panel" id="panel-product">
+
+    <div class="card empty-state" id="productEmptyState" style="display:none;"></div>
+    <div id="productContent">
 
     <div class="section-title">베스트셀러 TOP 10</div>
     <div class="grid grid-2">
@@ -317,6 +361,8 @@
         <tr><th>#</th><th>상품명</th><th>옵션명</th><th class="num">판매량</th><th class="num">매출</th></tr>
       </thead><tbody></tbody></table>
     </div>
+
+    </div><!-- /#productContent -->
 
   </section>
 
@@ -405,6 +451,8 @@
     document.querySelectorAll('.panel').forEach((p) => {
       p.classList.toggle('active', p.id === `panel-${tabName}`);
     });
+    const filterBar = document.getElementById('filterBar');
+    if (filterBar) filterBar.style.display = tabName === 'upload' ? 'none' : 'flex';
   }
 
   const tabNavEl = document.getElementById('tabNav');
@@ -417,158 +465,19 @@
   }
 
   /* ============================================================
-     1. DATA LAYER (샘플 데이터)
-     ------------------------------------------------------------
-     실제 연동 시에는 generateSampleData() 내부를 Supabase 쿼리 결과로 교체하세요. 예:
-       const { data } = await supabase.from('v_orders').select('*')...
-     ============================================================ */
-  function generateSampleData() {
-    const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-
-    return {
-      updatedAt: new Date().toLocaleString('ko-KR'),
-
-      sales: {
-        kpis: [
-          { label: '총 매출', value: '₩482,340,000', delta: '+6.4% WoW', up: true },
-          { label: '결제 건수', value: '3,214건', delta: '+3.1% WoW', up: true },
-          { label: '평균 객단가(AOV)', value: '₩150,100', delta: '-1.2% WoW', up: false },
-          { label: '환불/취소율', value: '2.8%', delta: '+0.3%p WoW', up: false },
-        ],
-        byDow: {
-          labels: ['월', '화', '수', '목', '금', '토', '일'],
-          data: [58, 61, 65, 70, 88, 102, 74].map((v) => v * 620000),
-        },
-        byHour: {
-          labels: Array.from({ length: 24 }, (_, h) => `${h}시`),
-          data: Array.from({ length: 24 }, (_, h) => {
-            const base = h >= 10 && h <= 23 ? rand(8, 30) : rand(1, 6);
-            return base * 480000;
-          }),
-        },
-        aovWeekly: {
-          labels: Array.from({ length: 12 }, (_, i) => `W${i + 1}`),
-          new: Array.from({ length: 12 }, () => rand(120, 145) * 1000),
-          repeat: Array.from({ length: 12 }, () => rand(155, 190) * 1000),
-          guest: Array.from({ length: 12 }, () => rand(95, 120) * 1000),
-        },
-        payMethods: [
-          { name: '신용카드', revenue: 268_000_000, orders: 1720 },
-          { name: '카카오페이', revenue: 96_000_000, orders: 640 },
-          { name: '네이버페이', revenue: 74_000_000, orders: 520 },
-          { name: '무통장입금', revenue: 32_000_000, orders: 210 },
-          { name: '토스페이', revenue: 12_340_000, orders: 124 },
-        ],
-      },
-
-      repeat: {
-        kpis: [
-          { label: '재구매율 (회원)', value: '38.2%', delta: '+2.1%p', up: true },
-          { label: '재구매율 (비회원)', value: '14.6%', delta: '+0.4%p', up: true },
-          { label: '평균 재구매 소요일', value: '46일', delta: '-3일', up: true },
-          { label: '평균 구매 주기', value: '52일', delta: '-1일', up: true },
-        ],
-        repeatDaysHistogram: {
-          labels: ['0-7일', '8-14일', '15-30일', '31-60일', '61-90일', '91-180일', '180일+'],
-          data: [4, 9, 22, 31, 18, 11, 5],
-        },
-        nthPurchase: {
-          labels: ['1회', '2회', '3회', '4회', '5회', '6회+'],
-          data: [6120, 2340, 980, 410, 180, 260],
-        },
-        repeatRateTrend: {
-          labels: Array.from({ length: 6 }, (_, i) => `${i + 3}월`),
-          member: [31, 33, 34, 36, 37, 38.2],
-          guest: [11, 12, 12.5, 13, 14, 14.6],
-        },
-      },
-
-      rfm: {
-        kpis: [
-          { label: '분석 대상 회원 수', value: '8,420명', delta: null },
-          { label: '평균 LTV', value: '₩312,000', delta: '+4.8%', up: true },
-          { label: 'VIP/충성 고객 비중', value: '18.4%', delta: '+1.1%p', up: true },
-          { label: '이탈위험 고객 비중', value: '21.7%', delta: '+2.3%p', up: false },
-        ],
-        cohortMonths: Array.from({ length: 8 }, (_, i) => `2026-${String(i + 1).padStart(2, '0')}`),
-        cohortRetention: [
-          [100, 34, 24, 19, 16, 14, 12, 11],
-          [100, 31, 22, 18, 15, 13, 11],
-          [100, 36, 26, 21, 17, 14],
-          [100, 33, 23, 18, 15],
-          [100, 30, 21, 17],
-          [100, 35, 24],
-          [100, 32],
-          [100],
-        ],
-        segments: [
-          { name: 'VIP(충성)', count: 620, revenueShare: 0.34, ltv: 890_000, recencyDays: 12 },
-          { name: '우수 고객', count: 1180, revenueShare: 0.26, ltv: 410_000, recencyDays: 28 },
-          { name: '일반 고객', count: 3200, revenueShare: 0.22, ltv: 165_000, recencyDays: 45 },
-          { name: '신규 고객', count: 1590, revenueShare: 0.10, ltv: 98_000, recencyDays: 18 },
-          { name: '이탈위험', count: 1830, revenueShare: 0.08, ltv: 72_000, recencyDays: 132 },
-        ],
-      },
-
-      product: {
-        bestByRevenue: [
-          { name: '수분 크림 100ml', qty: 2140, revenue: 64_200_000 },
-          { name: '클렌징 폼 200ml', qty: 1980, revenue: 49_500_000 },
-          { name: '선크림 SPF50', qty: 1720, revenue: 47_300_000 },
-          { name: '앰플 세트', qty: 890, revenue: 44_500_000 },
-          { name: '토너 패드', qty: 2410, revenue: 38_600_000 },
-          { name: '립밤 3종', qty: 3100, revenue: 31_000_000 },
-          { name: '마스크팩 10매', qty: 2650, revenue: 26_500_000 },
-          { name: '세럼 30ml', qty: 780, revenue: 24_960_000 },
-          { name: '핸드크림 세트', qty: 1540, revenue: 18_480_000 },
-          { name: '미스트 150ml', qty: 1290, revenue: 15_480_000 },
-        ],
-        bestByQty: [
-          { name: '립밤 3종', qty: 3100, revenue: 31_000_000 },
-          { name: '마스크팩 10매', qty: 2650, revenue: 26_500_000 },
-          { name: '토너 패드', qty: 2410, revenue: 38_600_000 },
-          { name: '수분 크림 100ml', qty: 2140, revenue: 64_200_000 },
-          { name: '클렌징 폼 200ml', qty: 1980, revenue: 49_500_000 },
-          { name: '선크림 SPF50', qty: 1720, revenue: 47_300_000 },
-          { name: '핸드크림 세트', qty: 1540, revenue: 18_480_000 },
-          { name: '미스트 150ml', qty: 1290, revenue: 15_480_000 },
-          { name: '앰플 세트', qty: 890, revenue: 44_500_000 },
-          { name: '세럼 30ml', qty: 780, revenue: 24_960_000 },
-        ],
-        optionTop10: [
-          { product: '수분 크림 100ml', option: '단품', qty: 1420, revenue: 42_600_000 },
-          { product: '클렌징 폼 200ml', option: '단품', qty: 1310, revenue: 32_750_000 },
-          { product: '립밤 3종', option: '핑크/코랄/누드', qty: 1180, revenue: 11_800_000 },
-          { product: '선크림 SPF50', option: '단품', qty: 1050, revenue: 28_875_000 },
-          { product: '토너 패드', option: '70매입', qty: 980, revenue: 15_680_000 },
-          { product: '마스크팩 10매', option: '수분 라인', qty: 940, revenue: 9_400_000 },
-          { product: '앰플 세트', option: '3종 세트', qty: 610, revenue: 30_500_000 },
-          { product: '세럼 30ml', option: '단품', qty: 520, revenue: 16_640_000 },
-          { product: '핸드크림 세트', option: '3종', qty: 480, revenue: 5_760_000 },
-          { product: '미스트 150ml', option: '단품', qty: 430, revenue: 5_160_000 },
-        ],
-      },
-    };
-  }
-
-  /* ============================================================
-     2. THEME HELPERS
+     1. THEME HELPERS
      ============================================================ */
   const cssRoot = getComputedStyle(document.documentElement);
-  function token(name) {
-    return cssRoot.getPropertyValue(name).trim();
-  }
+  function token(name) { return cssRoot.getPropertyValue(name).trim(); }
   function palette() {
     return [
       token('--series-1'), token('--series-2'), token('--series-3'), token('--series-4'),
       token('--series-5'), token('--series-6'), token('--series-7'), token('--series-8'),
     ];
   }
-  function fmtWon(n) { return '₩' + Math.round(n).toLocaleString('ko-KR'); }
-  function fmtNum(n) { return Math.round(n).toLocaleString('ko-KR'); }
+  function fmtWon(n) { return '₩' + Math.round(n || 0).toLocaleString('ko-KR'); }
+  function fmtNum(n) { return Math.round(n || 0).toLocaleString('ko-KR'); }
 
-  // Chart.js가 CDN에서 로드되지 못한 경우(오프라인, 사내망 차단 등)에도
-  // 나머지 대시보드(탭 전환/표/업로드 UI)는 항상 정상 동작하도록 방어.
   const CHART_READY = typeof window.Chart !== 'undefined';
   if (!CHART_READY) {
     console.warn('[대시보드] Chart.js 를 불러오지 못했습니다. 차트를 제외한 나머지 UI는 정상 동작합니다.');
@@ -580,20 +489,28 @@
 
   const baseGrid = { color: token('--grid'), drawTicks: false };
   const baseTicks = { color: token('--text-muted'), font: { size: 11 } };
+  const chartInstances = {}; // canvasId -> Chart 인스턴스 (기간 재조회 시 destroy 후 재생성)
 
-  // Chart.js 로드 실패 시 캔버스 자리에 안내 문구를 남기고 조용히 건너뛰는 안전 래퍼
   function safeChart(canvasId, config) {
     const el = document.getElementById(canvasId);
     if (!el) return null;
+    if (chartInstances[canvasId]) {
+      try { chartInstances[canvasId].destroy(); } catch (e) { /* noop */ }
+      delete chartInstances[canvasId];
+    }
     if (!CHART_READY) {
-      const note = document.createElement('div');
-      note.className = 'empty-note';
-      note.textContent = '차트 라이브러리(Chart.js)를 불러오지 못해 이 차트를 표시할 수 없습니다.';
-      el.replaceWith(note);
+      if (!el.dataset.fallbackApplied) {
+        const note = document.createElement('div');
+        note.className = 'empty-note';
+        note.textContent = '차트 라이브러리(Chart.js)를 불러오지 못해 이 차트를 표시할 수 없습니다.';
+        el.replaceWith(note);
+      }
       return null;
     }
     try {
-      return new Chart(el, config);
+      const chart = new Chart(el, config);
+      chartInstances[canvasId] = chart;
+      return chart;
     } catch (err) {
       console.error(`[대시보드] ${canvasId} 렌더 중 오류`, err);
       return null;
@@ -612,6 +529,28 @@
         y: { grid: baseGrid, ticks: { ...baseTicks, callback: (v) => yFmt(v) } },
       },
     };
+  }
+
+  /* ============================================================
+     2. 탭 콘텐츠 / 빈 상태 전환 헬퍼
+     ============================================================ */
+  function setTabState(tabKey, state, title, desc) {
+    const contentEl = document.getElementById(`${tabKey}Content`);
+    const emptyEl = document.getElementById(`${tabKey}EmptyState`);
+    if (!contentEl || !emptyEl) return;
+    if (state === 'content') {
+      contentEl.style.display = '';
+      emptyEl.style.display = 'none';
+    } else {
+      contentEl.style.display = 'none';
+      emptyEl.innerHTML = `<div class="icon">📭</div><div class="title">${title}</div><div class="desc">${desc}</div>`;
+      emptyEl.style.display = 'block';
+    }
+  }
+  const ALL_TABS = ['sales', 'repeat', 'rfm', 'product'];
+  function showGlobalEmptyState(title, desc) { ALL_TABS.forEach((k) => setTabState(k, 'empty', title, desc)); }
+  function showLoginRequired() {
+    showGlobalEmptyState('로그인이 필요합니다', '"데이터 업로드" 탭에서 로그인하면 대시보드가 표시됩니다.');
   }
 
   /* ============================================================
@@ -637,19 +576,13 @@
 
     safeChart('chartDow', {
       type: 'bar',
-      data: {
-        labels: d.byDow.labels,
-        datasets: [{ data: d.byDow.data, backgroundColor: token('--series-1'), borderRadius: 4, maxBarThickness: 40 }],
-      },
+      data: { labels: d.byDow.labels, datasets: [{ data: d.byDow.data, backgroundColor: token('--series-1'), borderRadius: 4, maxBarThickness: 40 }] },
       options: baseBarOptions((v) => fmtWon(v)),
     });
 
     safeChart('chartHour', {
       type: 'bar',
-      data: {
-        labels: d.byHour.labels,
-        datasets: [{ data: d.byHour.data, backgroundColor: token('--series-1'), borderRadius: 3, maxBarThickness: 14 }],
-      },
+      data: { labels: d.byHour.labels, datasets: [{ data: d.byHour.data, backgroundColor: token('--series-1'), borderRadius: 3, maxBarThickness: 14 }] },
       options: baseBarOptions((v) => fmtWon(v), true),
     });
 
@@ -658,9 +591,9 @@
       data: {
         labels: d.aovWeekly.labels,
         datasets: [
-          { label: '신규', data: d.aovWeekly.new, borderColor: token('--series-1'), backgroundColor: 'transparent', borderWidth: 2, pointRadius: 3, tension: 0.25 },
-          { label: '재구매', data: d.aovWeekly.repeat, borderColor: token('--series-2'), backgroundColor: 'transparent', borderWidth: 2, pointRadius: 3, tension: 0.25 },
-          { label: '비회원', data: d.aovWeekly.guest, borderColor: token('--series-3'), backgroundColor: 'transparent', borderWidth: 2, pointRadius: 3, tension: 0.25 },
+          { label: '신규', data: d.aovWeekly.new, borderColor: token('--series-1'), backgroundColor: 'transparent', borderWidth: 2, pointRadius: 3, tension: 0.25, spanGaps: true },
+          { label: '재구매', data: d.aovWeekly.repeat, borderColor: token('--series-2'), backgroundColor: 'transparent', borderWidth: 2, pointRadius: 3, tension: 0.25, spanGaps: true },
+          { label: '비회원', data: d.aovWeekly.guest, borderColor: token('--series-3'), backgroundColor: 'transparent', borderWidth: 2, pointRadius: 3, tension: 0.25, spanGaps: true },
         ],
       },
       options: {
@@ -668,7 +601,7 @@
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } },
-          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmtWon(ctx.parsed.y)}` } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y == null ? '-' : fmtWon(ctx.parsed.y)}` } },
         },
         scales: {
           x: { grid: { display: false }, ticks: baseTicks },
@@ -678,13 +611,10 @@
     });
 
     const pm = d.payMethods;
-    const total = pm.reduce((s, x) => s + x.revenue, 0);
+    const total = pm.reduce((s, x) => s + x.revenue, 0) || 1;
     safeChart('chartPayMethod', {
       type: 'doughnut',
-      data: {
-        labels: pm.map((x) => x.name),
-        datasets: [{ data: pm.map((x) => x.revenue), backgroundColor: palette(), borderColor: token('--surface-1'), borderWidth: 2 }],
-      },
+      data: { labels: pm.map((x) => x.name), datasets: [{ data: pm.map((x) => x.revenue), backgroundColor: palette(), borderColor: token('--surface-1'), borderWidth: 2 }] },
       options: {
         responsive: true,
         plugins: {
@@ -696,14 +626,14 @@
 
     const tbody = document.querySelector('#payMethodTable tbody');
     if (tbody) {
-      tbody.innerHTML = pm.map((x) => `
+      tbody.innerHTML = pm.length ? pm.map((x) => `
         <tr>
           <td>${x.name}</td>
           <td class="num">${fmtWon(x.revenue)}</td>
           <td class="num">${(x.revenue / total * 100).toFixed(1)}%</td>
           <td class="num">${fmtNum(x.orders)}</td>
         </tr>
-      `).join('');
+      `).join('') : '<tr><td colspan="4" class="empty-note">데이터 없음</td></tr>';
     }
   }
 
@@ -715,20 +645,14 @@
 
     safeChart('chartRepeatDays', {
       type: 'bar',
-      data: {
-        labels: d.repeatDaysHistogram.labels,
-        datasets: [{ data: d.repeatDaysHistogram.data, backgroundColor: token('--series-1'), borderRadius: 4, maxBarThickness: 44 }],
-      },
-      options: baseBarOptions((v) => `${v}%`),
+      data: { labels: d.repeatDaysHistogram.labels, datasets: [{ data: d.repeatDaysHistogram.data, backgroundColor: token('--series-1'), borderRadius: 4, maxBarThickness: 44 }] },
+      options: baseBarOptions((v) => `${fmtNum(v)}건`),
     });
 
     safeChart('chartNthPurchase', {
       type: 'bar',
-      data: {
-        labels: d.nthPurchase.labels,
-        datasets: [{ data: d.nthPurchase.data, backgroundColor: token('--series-2'), borderRadius: 4, maxBarThickness: 44 }],
-      },
-      options: baseBarOptions((v) => `${fmtNum(v)}명`),
+      data: { labels: d.nthPurchase.labels, datasets: [{ data: d.nthPurchase.data, backgroundColor: token('--series-2'), borderRadius: 4, maxBarThickness: 44 }] },
+      options: baseBarOptions((v) => `${fmtNum(v)}건`),
     });
 
     safeChart('chartRepeatRateTrend', {
@@ -761,12 +685,9 @@
   function retentionColor(v) {
     if (v === null || v === undefined) return { bg: 'transparent', fg: token('--text-primary') };
     const steps = [
-      { max: 100, bg: token('--seq-700'), fg: '#fff' },
-      { max: 40, bg: token('--seq-600'), fg: '#fff' },
-      { max: 30, bg: token('--seq-500'), fg: '#fff' },
-      { max: 22, bg: token('--seq-400'), fg: '#fff' },
-      { max: 17, bg: token('--seq-300'), fg: token('--text-primary') },
-      { max: 12, bg: token('--seq-200'), fg: token('--text-primary') },
+      { max: 100, bg: token('--seq-700'), fg: '#fff' }, { max: 40, bg: token('--seq-600'), fg: '#fff' },
+      { max: 30, bg: token('--seq-500'), fg: '#fff' }, { max: 22, bg: token('--seq-400'), fg: '#fff' },
+      { max: 17, bg: token('--seq-300'), fg: token('--text-primary') }, { max: 12, bg: token('--seq-200'), fg: token('--text-primary') },
       { max: 0, bg: token('--seq-100'), fg: token('--text-primary') },
     ];
     for (const s of steps) if (v >= s.max) return s;
@@ -776,38 +697,38 @@
   function renderRfmTab(d) {
     renderKpis('rfmKpis', d.kpis);
 
-    const maxCols = Math.max(...d.cohortRetention.map((r) => r.length));
-    const thead = '<tr><th>코호트</th>' + Array.from({ length: maxCols }, (_, i) => `<th>M${i}</th>`).join('') + '</tr>';
-    const rows = d.cohortMonths.map((month, i) => {
-      const row = d.cohortRetention[i];
-      const cells = Array.from({ length: maxCols }, (_, m) => {
-        const v = row[m];
-        if (v === undefined) return '<td></td>';
-        const style = retentionColor(v);
-        return `<td><span class="cohort-cell" style="background:${style.bg};color:${style.fg};display:inline-block;min-width:34px;">${v}%</span></td>`;
-      }).join('');
-      return `<tr><td style="font-weight:600;">${month}</td>${cells}</tr>`;
-    });
     const cohortEl = document.getElementById('cohortTable');
-    if (cohortEl) cohortEl.innerHTML = `<thead>${thead}</thead><tbody>${rows.join('')}</tbody>`;
+    if (cohortEl) {
+      if (!d.cohortMonths || d.cohortMonths.length === 0) {
+        cohortEl.innerHTML = '<tbody><tr><td class="empty-note">코호트를 계산할 회원 주문 이력이 아직 충분하지 않습니다.</td></tr></tbody>';
+      } else {
+        const maxCols = Math.max(...d.cohortRetention.map((r) => r.length));
+        const thead = '<tr><th>코호트</th>' + Array.from({ length: maxCols }, (_, i) => `<th>M${i}</th>`).join('') + '</tr>';
+        const rows = d.cohortMonths.map((month, i) => {
+          const row = d.cohortRetention[i];
+          const cells = Array.from({ length: maxCols }, (_, m) => {
+            const v = row[m];
+            if (v === undefined) return '<td></td>';
+            const style = retentionColor(v);
+            return `<td><span class="cohort-cell" style="background:${style.bg};color:${style.fg};display:inline-block;min-width:34px;">${v}%</span></td>`;
+          }).join('');
+          return `<tr><td style="font-weight:600;">${month}</td>${cells}</tr>`;
+        });
+        cohortEl.innerHTML = `<thead>${thead}</thead><tbody>${rows.join('')}</tbody>`;
+      }
+    }
 
     const seg = d.segments;
     safeChart('chartRfmCount', {
       type: 'bar',
-      data: {
-        labels: seg.map((s) => s.name),
-        datasets: [{ data: seg.map((s) => s.count), backgroundColor: palette(), borderRadius: 4, maxBarThickness: 44 }],
-      },
+      data: { labels: seg.map((s) => s.name), datasets: [{ data: seg.map((s) => s.count), backgroundColor: palette(), borderRadius: 4, maxBarThickness: 44 }] },
       options: { ...baseBarOptions((v) => `${fmtNum(v)}명`), indexAxis: 'y' },
     });
 
-    const totalRevenue = seg.reduce((s, x) => s + x.revenueShare, 0);
+    const totalRevenue = seg.reduce((s, x) => s + x.revenueShare, 0) || 1;
     safeChart('chartRfmRevenue', {
       type: 'doughnut',
-      data: {
-        labels: seg.map((s) => s.name),
-        datasets: [{ data: seg.map((s) => s.revenueShare), backgroundColor: palette(), borderColor: token('--surface-1'), borderWidth: 2 }],
-      },
+      data: { labels: seg.map((s) => s.name), datasets: [{ data: seg.map((s) => s.revenueShare), backgroundColor: palette(), borderColor: token('--surface-1'), borderWidth: 2 }] },
       options: {
         responsive: true,
         plugins: {
@@ -837,25 +758,19 @@
   function renderProductTab(d) {
     safeChart('chartBestByRevenue', {
       type: 'bar',
-      data: {
-        labels: d.bestByRevenue.map((x) => x.name),
-        datasets: [{ data: d.bestByRevenue.map((x) => x.revenue), backgroundColor: token('--series-1'), borderRadius: 4, maxBarThickness: 20 }],
-      },
+      data: { labels: d.bestByRevenue.map((x) => x.name), datasets: [{ data: d.bestByRevenue.map((x) => x.revenue), backgroundColor: token('--series-1'), borderRadius: 4, maxBarThickness: 20 }] },
       options: { ...baseBarOptions((v) => fmtWon(v)), indexAxis: 'y' },
     });
 
     safeChart('chartBestByQty', {
       type: 'bar',
-      data: {
-        labels: d.bestByQty.map((x) => x.name),
-        datasets: [{ data: d.bestByQty.map((x) => x.qty), backgroundColor: token('--series-2'), borderRadius: 4, maxBarThickness: 20 }],
-      },
+      data: { labels: d.bestByQty.map((x) => x.name), datasets: [{ data: d.bestByQty.map((x) => x.qty), backgroundColor: token('--series-2'), borderRadius: 4, maxBarThickness: 20 }] },
       options: { ...baseBarOptions((v) => `${fmtNum(v)}개`), indexAxis: 'y' },
     });
 
     const optTbody = document.querySelector('#optionTable tbody');
     if (optTbody) {
-      optTbody.innerHTML = d.optionTop10.map((o, i) => `
+      optTbody.innerHTML = d.optionTop10.length ? d.optionTop10.map((o, i) => `
         <tr>
           <td>${i + 1}</td>
           <td>${o.product}</td>
@@ -863,29 +778,438 @@
           <td class="num">${fmtNum(o.qty)}</td>
           <td class="num">${fmtWon(o.revenue)}</td>
         </tr>
-      `).join('');
+      `).join('') : '<tr><td colspan="5" class="empty-note">데이터 없음</td></tr>';
     }
-  }
-
-  function initDashboardData() {
-    let data;
-    try {
-      data = generateSampleData(); // TODO: Supabase 쿼리 결과로 교체
-      const lu = document.getElementById('lastUpdated');
-      if (lu) lu.textContent = data.updatedAt;
-    } catch (err) {
-      console.error('[대시보드] 샘플 데이터 생성 실패', err);
-      return;
-    }
-    try { renderSalesTab(data.sales); } catch (err) { console.error('[대시보드] 매출&결제 탭 렌더 실패', err); }
-    try { renderRepeatTab(data.repeat); } catch (err) { console.error('[대시보드] 재구매&주기 탭 렌더 실패', err); }
-    try { renderRfmTab(data.rfm); } catch (err) { console.error('[대시보드] RFM&코호트 탭 렌더 실패', err); }
-    try { renderProductTab(data.product); } catch (err) { console.error('[대시보드] 상품&옵션 탭 렌더 실패', err); }
   }
 
   /* ============================================================================
-     8. 카페24 CSV 파서 (cafe24-parser.js를 이 파일 안으로 인라인 — 로컬 file://
-        더블클릭 실행 시 외부 스크립트 CORS 차단을 완전히 피하기 위함)
+     8. 실데이터 분석 엔진
+     ------------------------------------------------------------------------------
+     Supabase의 cafe24_order_items 원본 테이블에서 행을 가져와 브라우저에서 직접 집계합니다.
+     - allTimeRows: 기간 제한 없이 전체 이력 (재구매 Nth/최초구매일/RFM/코호트 계산에 필요)
+     - rangeRows:   상단 날짜 필터로 gte/lte 조건을 걸어 조회한 선택 기간 데이터
+       (매출&결제 / 재구매&주기 / 상품&옵션 탭은 rangeRows 기준, RFM&코호트는 항상 allTimeRows 기준)
+     ============================================================================ */
+
+  const ORDER_ITEM_COLUMNS = [
+    'order_id', 'order_item_id', 'order_datetime', 'cancel_type', 'order_status',
+    'payment_method', 'order_total_amount', 'item_paid_amount', 'item_list_amount',
+    'quantity', 'product_name', 'option_name', 'member_id', 'customer_key', 'is_guest',
+  ].join(', ');
+
+  function toRangeStartISO(dateStr) { return dateStr ? `${dateStr}T00:00:00+09:00` : null; }
+  function toRangeEndISO(dateStr) { return dateStr ? `${dateStr}T23:59:59+09:00` : null; }
+
+  async function fetchOrderItems(supabaseClient, { startISO, endISO } = {}) {
+    const pageSize = 1000;
+    let all = [];
+    let from = 0;
+    for (;;) {
+      let q = supabaseClient
+        .from('cafe24_order_items')
+        .select(ORDER_ITEM_COLUMNS)
+        .order('order_datetime', { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (startISO) q = q.gte('order_datetime', startISO);
+      if (endISO) q = q.lte('order_datetime', endISO);
+      const { data, error } = await q;
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      all = all.concat(data);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    return all;
+  }
+
+  // 품목 단위 행 → 주문 단위 1행으로 복원 (order_id 기준 첫 행 사용, 주문 단위 필드는 반복되므로 동일)
+  function toOrders(rows) {
+    const map = new Map();
+    for (const r of rows) {
+      if (!map.has(r.order_id)) {
+        map.set(r.order_id, {
+          order_id: r.order_id,
+          order_datetime: r.order_datetime,
+          order_status: r.order_status,
+          payment_method: r.payment_method,
+          order_total_amount: r.order_total_amount,
+          member_id: r.member_id,
+          is_guest: r.is_guest,
+          customer_key: r.customer_key,
+        });
+      }
+    }
+    return Array.from(map.values());
+  }
+
+  // 전체 이력 기준 고객 인덱스: 재구매 Nth 판정, RFM/코호트, 최초구매일 계산에 사용
+  function buildCustomerIndex(allOrders) {
+    const byCustomer = new Map();
+    for (const o of allOrders) {
+      if (o.order_status !== 'paid') continue;
+      const key = o.customer_key;
+      if (!key) continue; // 비회원인데 전화번호가 없어 식별 불가한 경우 등
+      if (!byCustomer.has(key)) byCustomer.set(key, { customerKey: key, isGuest: o.is_guest, orders: [] });
+      byCustomer.get(key).orders.push(o);
+    }
+    const orderIdToNth = new Map();
+    for (const c of byCustomer.values()) {
+      c.orders.sort((a, b) => new Date(a.order_datetime) - new Date(b.order_datetime));
+      c.firstOrderAt = c.orders[0].order_datetime;
+      c.lastOrderAt = c.orders[c.orders.length - 1].order_datetime;
+      c.orderCount = c.orders.length;
+      c.totalRevenue = c.orders.reduce((s, o) => s + o.order_total_amount, 0);
+      c.orders.forEach((o, i) => orderIdToNth.set(o.order_id, i + 1));
+    }
+    return { byCustomer, orderIdToNth };
+  }
+
+  function isoWeekKey(date) {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = (d.getUTCDay() + 6) % 7;
+    d.setUTCDate(d.getUTCDate() - dayNum + 3);
+    const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+    const week = 1 + Math.round(((d - firstThursday) / 86400000 - 3 + ((firstThursday.getUTCDay() + 6) % 7)) / 7);
+    return `${d.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+  }
+
+  function monthDiff(fromYYYYMM, toYYYYMM) {
+    const [fy, fm] = fromYYYYMM.split('-').map(Number);
+    const [ty, tm] = toYYYYMM.split('-').map(Number);
+    return (ty - fy) * 12 + (tm - fm);
+  }
+  function monthKeyOf(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
+
+  function buildSalesAnalytics(rangeOrders, orderIdToNth) {
+    const paid = rangeOrders.filter((o) => o.order_status === 'paid');
+    const canceled = rangeOrders.filter((o) => o.order_status !== 'paid');
+    const totalRevenue = paid.reduce((s, o) => s + o.order_total_amount, 0);
+    const orderCount = paid.length;
+    const aov = orderCount ? totalRevenue / orderCount : 0;
+    const cancelRate = rangeOrders.length ? (canceled.length / rangeOrders.length) * 100 : 0;
+
+    const DOW_LABELS = ['월', '화', '수', '목', '금', '토', '일'];
+    const dowSums = new Array(7).fill(0);
+    const hourSums = new Array(24).fill(0);
+    const payMethodMap = new Map();
+    const weekBuckets = new Map();
+
+    for (const o of paid) {
+      const d = new Date(o.order_datetime);
+      dowSums[(d.getDay() + 6) % 7] += o.order_total_amount;
+      hourSums[d.getHours()] += o.order_total_amount;
+
+      const pm = o.payment_method || '기타';
+      if (!payMethodMap.has(pm)) payMethodMap.set(pm, { name: pm, revenue: 0, orders: 0 });
+      const rec = payMethodMap.get(pm);
+      rec.revenue += o.order_total_amount;
+      rec.orders += 1;
+
+      const wk = isoWeekKey(d);
+      if (!weekBuckets.has(wk)) weekBuckets.set(wk, { new: [], repeat: [], guest: [] });
+      const bucket = weekBuckets.get(wk);
+      if (o.is_guest) bucket.guest.push(o.order_total_amount);
+      else if ((orderIdToNth.get(o.order_id) || 1) === 1) bucket.new.push(o.order_total_amount);
+      else bucket.repeat.push(o.order_total_amount);
+    }
+
+    const weekKeys = Array.from(weekBuckets.keys()).sort();
+    const avg = (arr) => (arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null);
+
+    return {
+      kpis: [
+        { label: '총 매출', value: fmtWon(totalRevenue), delta: null },
+        { label: '결제 건수', value: `${fmtNum(orderCount)}건`, delta: null },
+        { label: '평균 객단가(AOV)', value: fmtWon(aov), delta: null },
+        { label: '환불/취소율', value: `${cancelRate.toFixed(1)}%`, delta: null },
+      ],
+      byDow: { labels: DOW_LABELS, data: dowSums },
+      byHour: { labels: Array.from({ length: 24 }, (_, h) => `${h}시`), data: hourSums },
+      aovWeekly: {
+        labels: weekKeys,
+        new: weekKeys.map((k) => avg(weekBuckets.get(k).new)),
+        repeat: weekKeys.map((k) => avg(weekBuckets.get(k).repeat)),
+        guest: weekKeys.map((k) => avg(weekBuckets.get(k).guest)),
+      },
+      payMethods: Array.from(payMethodMap.values()).sort((a, b) => b.revenue - a.revenue),
+    };
+  }
+
+  function buildRepeatAnalytics(rangeOrders, byCustomer, orderIdToNth) {
+    const rangePaid = rangeOrders.filter((o) => o.order_status === 'paid');
+
+    const activeMembers = new Set();
+    const activeGuests = new Set();
+    for (const o of rangePaid) {
+      if (!o.customer_key) continue;
+      (o.is_guest ? activeGuests : activeMembers).add(o.customer_key);
+    }
+    function repeatRateOf(activeSet) {
+      if (activeSet.size === 0) return 0;
+      let repeatCount = 0;
+      for (const key of activeSet) {
+        const c = byCustomer.get(key);
+        if (c && c.orderCount >= 2) repeatCount++;
+      }
+      return (repeatCount / activeSet.size) * 100;
+    }
+    const memberRepeatRate = repeatRateOf(activeMembers);
+    const guestRepeatRate = repeatRateOf(activeGuests);
+
+    const gapDaysAt2nd = [];
+    const allGaps = [];
+    for (const o of rangePaid) {
+      const nth = orderIdToNth.get(o.order_id);
+      const c = o.customer_key ? byCustomer.get(o.customer_key) : null;
+      if (!c || !nth || nth < 2) continue;
+      const gap = (new Date(o.order_datetime) - new Date(c.orders[nth - 2].order_datetime)) / 86400000;
+      allGaps.push(gap);
+      if (nth === 2) gapDaysAt2nd.push(gap);
+    }
+    const avgGap = gapDaysAt2nd.length ? gapDaysAt2nd.reduce((s, v) => s + v, 0) / gapDaysAt2nd.length : 0;
+    const avgCycle = allGaps.length ? allGaps.reduce((s, v) => s + v, 0) / allGaps.length : 0;
+
+    const histBuckets = [
+      { label: '0-7일', max: 7 }, { label: '8-14일', max: 14 }, { label: '15-30일', max: 30 },
+      { label: '31-60일', max: 60 }, { label: '61-90일', max: 90 }, { label: '91-180일', max: 180 },
+      { label: '180일+', max: Infinity },
+    ];
+    const histCounts = histBuckets.map(() => 0);
+    for (const g of gapDaysAt2nd) {
+      const idx = histBuckets.findIndex((b) => g <= b.max);
+      histCounts[idx === -1 ? histCounts.length - 1 : idx]++;
+    }
+
+    const nthLabels = ['1회', '2회', '3회', '4회', '5회', '6회+'];
+    const nthCounts = new Array(6).fill(0);
+    for (const o of rangePaid) {
+      const nth = orderIdToNth.get(o.order_id) || 1;
+      nthCounts[Math.min(nth, 6) - 1]++;
+    }
+
+    const monthMap = new Map();
+    for (const o of rangePaid) {
+      const mk = String(o.order_datetime).slice(0, 7);
+      if (!monthMap.has(mk)) monthMap.set(mk, { memberTotal: 0, memberRepeat: 0, guestTotal: 0, guestRepeat: 0 });
+      const rec = monthMap.get(mk);
+      const nth = orderIdToNth.get(o.order_id) || 1;
+      if (o.is_guest) { rec.guestTotal++; if (nth > 1) rec.guestRepeat++; }
+      else { rec.memberTotal++; if (nth > 1) rec.memberRepeat++; }
+    }
+    const monthKeys = Array.from(monthMap.keys()).sort();
+
+    return {
+      kpis: [
+        { label: '재구매율 (회원)', value: `${memberRepeatRate.toFixed(1)}%`, delta: null },
+        { label: '재구매율 (비회원)', value: `${guestRepeatRate.toFixed(1)}%`, delta: null },
+        { label: '평균 재구매 소요일', value: `${Math.round(avgGap)}일`, delta: null },
+        { label: '평균 구매 주기', value: `${Math.round(avgCycle)}일`, delta: null },
+      ],
+      repeatDaysHistogram: { labels: histBuckets.map((b) => b.label), data: histCounts },
+      nthPurchase: { labels: nthLabels, data: nthCounts },
+      repeatRateTrend: {
+        labels: monthKeys,
+        member: monthKeys.map((k) => { const r = monthMap.get(k); return r.memberTotal ? +(r.memberRepeat / r.memberTotal * 100).toFixed(1) : 0; }),
+        guest: monthKeys.map((k) => { const r = monthMap.get(k); return r.guestTotal ? +(r.guestRepeat / r.guestTotal * 100).toFixed(1) : 0; }),
+      },
+    };
+  }
+
+  function buildRfmAnalytics(byCustomer, asOfDate) {
+    const members = Array.from(byCustomer.values()).filter((c) => !c.isGuest);
+    const totalRevenueAll = members.reduce((s, c) => s + c.totalRevenue, 0);
+    const daysSince = (dateStr) => Math.round((asOfDate - new Date(dateStr)) / 86400000);
+
+    const segmented = members.map((c) => {
+      const recency = daysSince(c.lastOrderAt);
+      let segment;
+      if (c.orderCount >= 5) segment = 'VIP(충성)';
+      else if (recency > 120) segment = '이탈위험';
+      else if (c.orderCount === 1 && daysSince(c.firstOrderAt) <= 30) segment = '신규 고객';
+      else if (c.orderCount >= 2) segment = '우수 고객';
+      else segment = '일반 고객';
+      return { ...c, recency, segment };
+    });
+
+    const segNames = ['VIP(충성)', '우수 고객', '일반 고객', '신규 고객', '이탈위험'];
+    const segments = segNames.map((name) => {
+      const group = segmented.filter((c) => c.segment === name);
+      const revenue = group.reduce((s, c) => s + c.totalRevenue, 0);
+      return {
+        name,
+        count: group.length,
+        revenueShare: totalRevenueAll ? revenue / totalRevenueAll : 0,
+        ltv: group.length ? revenue / group.length : 0,
+        recencyDays: group.length ? Math.round(group.reduce((s, c) => s + c.recency, 0) / group.length) : 0,
+      };
+    });
+
+    const vipShare = members.length ? (segmented.filter((c) => c.segment === 'VIP(충성)').length / members.length) * 100 : 0;
+    const churnShare = members.length ? (segmented.filter((c) => c.segment === '이탈위험').length / members.length) * 100 : 0;
+    const avgLtv = members.length ? totalRevenueAll / members.length : 0;
+
+    // 코호트: 최초구매월 기준, M0~M7 경과월별 재방문(구매) 비율
+    const cohortMap = new Map();
+    const asOfMonth = monthKeyOf(asOfDate);
+    for (const c of members) {
+      const cohortMonth = c.firstOrderAt.slice(0, 7);
+      if (!cohortMap.has(cohortMonth)) cohortMap.set(cohortMonth, { size: 0, activeByOffset: new Map() });
+      const cohort = cohortMap.get(cohortMonth);
+      cohort.size++;
+      const activityMonths = new Set(c.orders.map((o) => String(o.order_datetime).slice(0, 7)));
+      for (const m of activityMonths) {
+        const offset = monthDiff(cohortMonth, m);
+        if (offset < 0) continue;
+        if (!cohort.activeByOffset.has(offset)) cohort.activeByOffset.set(offset, new Set());
+        cohort.activeByOffset.get(offset).add(c.customerKey);
+      }
+    }
+    const cohortMonths = Array.from(cohortMap.keys()).sort();
+    const cohortRetention = cohortMonths.map((m) => {
+      const cohort = cohortMap.get(m);
+      const monthsAvailable = Math.min(7, monthDiff(m, asOfMonth));
+      const row = [];
+      for (let off = 0; off <= monthsAvailable; off++) {
+        const activeCount = cohort.activeByOffset.get(off)?.size || 0;
+        row.push(cohort.size ? Math.round((activeCount / cohort.size) * 100) : 0);
+      }
+      return row;
+    });
+
+    return {
+      kpis: [
+        { label: '분석 대상 회원 수', value: `${fmtNum(members.length)}명`, delta: null },
+        { label: '평균 LTV', value: fmtWon(avgLtv), delta: null },
+        { label: 'VIP/충성 고객 비중', value: `${vipShare.toFixed(1)}%`, delta: null },
+        { label: '이탈위험 고객 비중', value: `${churnShare.toFixed(1)}%`, delta: null },
+      ],
+      cohortMonths,
+      cohortRetention,
+      segments,
+      memberCount: members.length,
+    };
+  }
+
+  function buildProductAnalytics(rangeItemRows) {
+    const paidRows = rangeItemRows.filter((r) => r.order_status === 'paid');
+    const productMap = new Map();
+    const optionMap = new Map();
+    for (const r of paidRows) {
+      if (!productMap.has(r.product_name)) productMap.set(r.product_name, { name: r.product_name, qty: 0, revenue: 0 });
+      const p = productMap.get(r.product_name);
+      p.qty += r.quantity;
+      p.revenue += r.item_paid_amount;
+
+      const optKey = `${r.product_name}||${r.option_name || '옵션없음'}`;
+      if (!optionMap.has(optKey)) optionMap.set(optKey, { product: r.product_name, option: r.option_name || '옵션없음', qty: 0, revenue: 0 });
+      const o = optionMap.get(optKey);
+      o.qty += r.quantity;
+      o.revenue += r.item_paid_amount;
+    }
+    const products = Array.from(productMap.values());
+    return {
+      bestByRevenue: [...products].sort((a, b) => b.revenue - a.revenue).slice(0, 10),
+      bestByQty: [...products].sort((a, b) => b.qty - a.qty).slice(0, 10),
+      optionTop10: Array.from(optionMap.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10),
+    };
+  }
+
+  /* ============================================================================
+     9. 기간 필터 + 대시보드 데이터 로딩
+     ============================================================================ */
+  const els2 = {
+    filterStart: document.getElementById('filterStart'),
+    filterEnd: document.getElementById('filterEnd'),
+    btnApplyFilter: document.getElementById('btnApplyFilter'),
+    filterNote: document.getElementById('filterNote'),
+    lastUpdated: document.getElementById('lastUpdated'),
+  };
+
+  function fmtDateLocal(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+
+  function setDefaultDateRange() {
+    if (!els2.filterStart || !els2.filterEnd) return;
+    const today = new Date();
+    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    els2.filterStart.value = fmtDateLocal(firstOfMonth);
+    els2.filterEnd.value = fmtDateLocal(today);
+  }
+
+  let sharedSupabaseClient = null;
+
+  async function loadDashboardData() {
+    if (!sharedSupabaseClient) {
+      showGlobalEmptyState('Supabase 연결 안 됨', 'Supabase 라이브러리를 불러오지 못했거나 클라이언트 생성에 실패했습니다.');
+      return;
+    }
+    if (els2.filterNote) els2.filterNote.textContent = '불러오는 중...';
+
+    const { data: sessionData } = await sharedSupabaseClient.auth.getSession();
+    if (!sessionData.session) {
+      showLoginRequired();
+      if (els2.filterNote) els2.filterNote.textContent = '';
+      return;
+    }
+
+    const startDate = els2.filterStart ? els2.filterStart.value : '';
+    const endDate = els2.filterEnd ? els2.filterEnd.value : '';
+
+    let allTimeRows, rangeRows;
+    try {
+      [allTimeRows, rangeRows] = await Promise.all([
+        fetchOrderItems(sharedSupabaseClient),
+        fetchOrderItems(sharedSupabaseClient, { startISO: toRangeStartISO(startDate), endISO: toRangeEndISO(endDate) }),
+      ]);
+    } catch (err) {
+      console.error('[대시보드] 데이터 조회 실패', err);
+      if (els2.filterNote) els2.filterNote.textContent = '데이터 조회 중 오류가 발생했습니다 (콘솔 확인).';
+      showGlobalEmptyState('데이터 조회 오류', '브라우저 콘솔(F12)에서 오류 메시지를 확인해주세요.');
+      return;
+    }
+
+    if (els2.lastUpdated) els2.lastUpdated.textContent = new Date().toLocaleString('ko-KR');
+    if (els2.filterNote) els2.filterNote.textContent = `전체 ${fmtNum(allTimeRows.length)}행 · 선택 기간 ${fmtNum(rangeRows.length)}행`;
+
+    if (allTimeRows.length === 0) {
+      showGlobalEmptyState('업로드된 주문 데이터가 없습니다', '"데이터 업로드" 탭에서 카페24 주문 CSV를 먼저 업로드해주세요.');
+      return;
+    }
+
+    const allOrders = toOrders(allTimeRows);
+    const rangeOrders = toOrders(rangeRows);
+    const { byCustomer, orderIdToNth } = buildCustomerIndex(allOrders);
+
+    if (rangeRows.length === 0) {
+      const msg = ['선택한 기간에 해당하는 주문이 없습니다', '다른 기간을 선택해주세요.'];
+      setTabState('sales', 'empty', msg[0], msg[1]);
+      setTabState('repeat', 'empty', msg[0], msg[1]);
+      setTabState('product', 'empty', msg[0], msg[1]);
+    } else {
+      setTabState('sales', 'content');
+      setTabState('repeat', 'content');
+      setTabState('product', 'content');
+      try { renderSalesTab(buildSalesAnalytics(rangeOrders, orderIdToNth)); } catch (e) { console.error('[대시보드] 매출&결제 렌더 실패', e); }
+      try { renderRepeatTab(buildRepeatAnalytics(rangeOrders, byCustomer, orderIdToNth)); } catch (e) { console.error('[대시보드] 재구매&주기 렌더 실패', e); }
+      try { renderProductTab(buildProductAnalytics(rangeRows)); } catch (e) { console.error('[대시보드] 상품&옵션 렌더 실패', e); }
+    }
+
+    // RFM/코호트는 기간 필터와 무관하게 항상 전체 이력 기준 (기준일 = 선택된 종료일, 없으면 오늘)
+    try {
+      const asOf = endDate ? new Date(toRangeEndISO(endDate)) : new Date();
+      const rfmData = buildRfmAnalytics(byCustomer, asOf);
+      if (rfmData.memberCount === 0) {
+        setTabState('rfm', 'empty', '회원 주문 데이터가 없습니다', '업로드된 주문이 모두 비회원 주문입니다.');
+      } else {
+        setTabState('rfm', 'content');
+        renderRfmTab(rfmData);
+      }
+    } catch (e) {
+      console.error('[대시보드] RFM&코호트 렌더 실패', e);
+    }
+  }
+
+  /* ============================================================================
+     10. 카페24 CSV 파서 (인라인 — file:// CORS 회피)
      ============================================================================ */
 
   const REQUIRED_HEADERS = [
@@ -909,44 +1233,34 @@
 
   function toTimestamp(v) {
     if (!v || !v.trim()) return null;
-    const iso = v.trim().replace(' ', 'T') + '+09:00'; // 카페24 원본은 KST 로컬시간
+    const iso = v.trim().replace(' ', 'T') + '+09:00';
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? null : d.toISOString();
   }
 
-  function toDate(v) {
-    if (!v || !v.trim()) return null;
-    return v.trim();
-  }
+  function toDate(v) { return v && v.trim() ? v.trim() : null; }
 
-  function normalizePhone(phone) {
-    if (!phone) return '';
-    return String(phone).replace(/[^0-9]/g, '');
-  }
+  function normalizePhone(phone) { return phone ? String(phone).replace(/[^0-9]/g, '') : ''; }
 
   async function hashGuestKey(name, normalizedPhone) {
-    if (!normalizedPhone) return null; // 전화번호 없으면 비회원 식별 불가 → 수동 확인 필요
+    if (!normalizedPhone) return null;
     const raw = `${(name || '').trim()}|${normalizedPhone}`;
-    if (typeof crypto === 'undefined' || !crypto.subtle) return null; // 매우 오래된 브라우저 대비
+    if (typeof crypto === 'undefined' || !crypto.subtle) return null;
     const enc = new TextEncoder().encode(raw);
     const buf = await crypto.subtle.digest('SHA-256', enc);
     return 'guest_' + Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
   }
 
-  // 실측(675행) 기준: parsed 626 / fallback 8 / none(옵션없음) 41 — 커버리지 98.8%
   const OPTION_STRICT_PATTERN = /^(.*?)\((?:선택|옵션)=(?:[^[]*)\[(\d+)%\]\s*(.*?)(?:\s+[\d,]+원)?\)$/;
 
   function parseOption(productName, combinedName) {
     const base = (productName || '').trim();
     const combined = (combinedName || '').trim();
     if (!combined || combined === base) return { optionName: null, status: 'none' };
-
     const strict = combined.match(OPTION_STRICT_PATTERN);
     if (strict) return { optionName: strict[3].trim(), status: 'parsed' };
-
     const loose = combined.match(/\(([^)]*)\)\s*$/);
     if (loose) return { optionName: loose[1].trim(), status: 'fallback' };
-
     return { optionName: combined, status: 'fallback' };
   }
 
@@ -1044,9 +1358,7 @@
             computeItemPaidAmounts(rows);
 
             for (const r of rows) {
-              if (!r.member_id) {
-                r.guest_customer_key = await hashGuestKey(r.orderer_name, r.orderer_phone_normalized);
-              }
+              if (!r.member_id) r.guest_customer_key = await hashGuestKey(r.orderer_name, r.orderer_phone_normalized);
             }
 
             resolve({ records: rows, warnings, headerCheck, raw: result.data });
@@ -1062,18 +1374,10 @@
   async function uploadRecords(supabaseClient, records, { uploadedBy, sourceFileName, chunkSize = 500 } = {}) {
     const uploadBatchId = crypto.randomUUID();
     const now = new Date().toISOString();
-
-    const payload = records.map((r) => ({
-      ...r,
-      upload_batch_id: uploadBatchId,
-      source_file_name: sourceFileName || null,
-      uploaded_by: uploadedBy || null,
-      uploaded_at: now,
-    }));
+    const payload = records.map((r) => ({ ...r, upload_batch_id: uploadBatchId, source_file_name: sourceFileName || null, uploaded_by: uploadedBy || null, uploaded_at: now }));
 
     let uploaded = 0;
     const errors = [];
-
     for (let i = 0; i < payload.length; i += chunkSize) {
       const chunk = payload.slice(i, i + chunkSize);
       const { error } = await supabaseClient.from('cafe24_order_items').upsert(chunk, { onConflict: 'order_item_id' });
@@ -1090,41 +1394,31 @@
   }
 
   /* ============================================================================
-     9. 업로드 탭 UI 배선 — 기존 Meta 대시보드와 동일 Supabase 프로젝트 / 동일 Origin(Vercel) 연동
-     ------------------------------------------------------------------------------
-     ▼▼▼ [필수 수정] 아래 두 줄을 기존 Meta 대시보드 코드에서 쓰던 값과 "동일하게" 채워 넣으세요.
-         Meta 대시보드 소스에서 보통 `createClient(...)`를 호출하는 부분(예: supabase-client.js,
-         config.js, 또는 index.html 상단 <script> 블록) 근처에 이 두 값이 있습니다.
-         URL/KEY가 한 글자라도 다르면 로그인 세션이 자동으로 이어지지 않고 완전히 별개의
-         Supabase 프로젝트로 인식되니, 반드시 복사-붙여넣기로 옮기세요 (직접 타이핑 금지).
+     11. 업로드 탭 UI 배선 (대시보드와 동일한 Supabase 클라이언트 공유)
      ============================================================================ */
-  function initUploadTab() {
-    const SUPABASE_URL = 'https://xemutoupgtdqreywucic.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_tXdluUBb2F3rd_enRUC0dA_YKWzrnX2';
-    // ▲▲▲ [필수 수정] 여기까지 ▲▲▲
+  const SUPABASE_URL = 'https://xemutoupgtdqreywucic.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_tXdluUBb2F3rd_enRUC0dA_YKWzrnX2';
+  const SUPABASE_AUTH_OPTIONS = {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    // storageKey: 'sb-xxxx-auth-token', // Meta 대시보드에서 커스텀 storageKey를 썼다면 여기에 동일하게 지정
+  };
 
-    /*
-       세션 자동 연동이 되는 원리 (Vercel 동일 도메인 배포 기준):
-       supabase-js는 로그인 세션을 브라우저 localStorage에
-       "sb-<프로젝트 참조 ID>-auth-token" 이라는 키로 저장합니다. 이 키는 SUPABASE_URL에서
-       자동으로 파생되므로, 위 두 값을 Meta 대시보드와 동일하게 맞추기만 하면:
-         1) 같은 도메인(zzz.vercel.app)에서 열리는 두 페이지가 같은 localStorage를 공유하고
-         2) 같은 URL/KEY → 같은 storageKey를 사용하므로
-       Meta 대시보드에서 로그인한 세션을 이 페이지의 supabase.auth.getSession()이 그대로 읽어옵니다.
-       별도 재로그인 절차는 필요 없습니다. (아래 auth 옵션은 supabase-js v2 기본값과 동일하지만,
-       "세션을 반드시 localStorage에 유지 + 자동 갱신"이라는 의도를 명시적으로 남겨두었습니다.)
+  function createSharedSupabaseClient() {
+    if (typeof window.supabase === 'undefined') {
+      console.warn('[대시보드] Supabase 라이브러리를 불러오지 못했습니다.');
+      return null;
+    }
+    try {
+      return window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: SUPABASE_AUTH_OPTIONS });
+    } catch (err) {
+      console.error('[대시보드] Supabase 클라이언트 생성 실패', err);
+      return null;
+    }
+  }
 
-       ※ 예외: 만약 Meta 대시보드의 createClient(...) 호출부에 `auth: { storageKey: '...' }`
-       처럼 커스텀 storageKey를 지정해둔 게 있다면, 아래 auth 옵션에도 반드시 동일한
-       storageKey를 추가해야 세션이 공유됩니다 (기본값을 쓰고 있다면 아래 그대로 두면 됩니다).
-    */
-    const SUPABASE_AUTH_OPTIONS = {
-      persistSession: true,      // 로그인 세션을 localStorage에 유지
-      autoRefreshToken: true,    // 액세스 토큰 만료 전 자동 갱신
-      detectSessionInUrl: true,  // 이메일 매직링크/OAuth 콜백 등에서 세션 자동 인식
-      // storageKey: 'sb-xxxx-auth-token', // ← Meta 대시보드에서 커스텀 storageKey를 썼다면 여기에 동일하게 지정
-    };
-
+  function initUploadTab(supabaseClient) {
     const els = {
       authLoggedOut: document.getElementById('authLoggedOut'),
       authLoggedIn: document.getElementById('authLoggedIn'),
@@ -1146,24 +1440,11 @@
       uploadResult: document.getElementById('uploadResult'),
     };
 
-    if (!els.authLoggedOut) return; // 업로드 탭 마크업이 없는 페이지에서는 조용히 종료
-
-    let supabaseClient = null;
-    if (typeof window.supabase !== 'undefined') {
-      try {
-        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-          auth: SUPABASE_AUTH_OPTIONS,
-        });
-      } catch (err) {
-        console.error('[대시보드] Supabase 클라이언트 생성 실패', err);
-      }
-    } else {
-      console.warn('[대시보드] Supabase 라이브러리를 불러오지 못했습니다. 업로드/로그인 기능이 비활성화됩니다.');
-    }
+    if (!els.authLoggedOut) return;
 
     if (!supabaseClient) {
       els.authLoggedOut.style.display = 'block';
-      els.authError.textContent = 'Supabase 라이브러리를 불러오지 못해 로그인/업로드를 사용할 수 없습니다. 인터넷 연결을 확인하거나 SUPABASE_URL/KEY 설정을 확인하세요.';
+      els.authError.textContent = 'Supabase 라이브러리를 불러오지 못해 로그인/업로드를 사용할 수 없습니다.';
       if (els.btnLogin) els.btnLogin.disabled = true;
       return;
     }
@@ -1181,23 +1462,15 @@
       if (loggedIn) els.authUserEmail.textContent = currentSession.user.email;
     }
 
-    // 최초 진입 시: localStorage에 Meta 대시보드에서 만든 세션이 이미 있으면 그대로 로그인 상태로 시작
     async function refreshAuthUI() {
       const { data, error } = await supabaseClient.auth.getSession();
-      if (error) {
-        console.error('[대시보드] 세션 확인 실패', error);
-        applySession(null);
-        return;
-      }
+      if (error) { console.error('[대시보드] 세션 확인 실패', error); applySession(null); return; }
       applySession(data.session);
     }
 
     els.btnLogin?.addEventListener('click', async () => {
       els.authError.textContent = '';
-      const { error } = await supabaseClient.auth.signInWithPassword({
-        email: els.authEmail.value.trim(),
-        password: els.authPassword.value,
-      });
+      const { error } = await supabaseClient.auth.signInWithPassword({ email: els.authEmail.value.trim(), password: els.authPassword.value });
       if (error) { els.authError.textContent = error.message; return; }
       await refreshAuthUI();
     });
@@ -1227,15 +1500,10 @@
       }
 
       const { records, warnings, headerCheck } = result;
-
       if (!headerCheck.ok) {
-        els.headerCheckResult.innerHTML = `
-          <span class="status-badge error">필수 컬럼 누락</span>
-          <div class="empty-note">다음 컬럼이 CSV에 없습니다: ${headerCheck.missing.join(', ')}</div>
-        `;
+        els.headerCheckResult.innerHTML = `<span class="status-badge error">필수 컬럼 누락</span><div class="empty-note">다음 컬럼이 CSV에 없습니다: ${headerCheck.missing.join(', ')}</div>`;
         return;
       }
-
       els.headerCheckResult.innerHTML = `<span class="status-badge ok">필수 컬럼 21개 확인 완료</span>`;
 
       parsedRecords = records;
@@ -1273,7 +1541,6 @@
       `).join('');
 
       els.previewMoreNote.textContent = records.length > 50 ? `상위 50행만 표시 (전체 ${records.length}행)` : '';
-
       els.parseWarnings.innerHTML = warnings.length
         ? `<div class="status-badge warn">경고 ${warnings.length}건</div><ul class="warning-list">${warnings.slice(0, 30).map((w) => `<li>${w}</li>`).join('')}</ul>`
         : `<span class="status-badge ok">경고 없음</span>`;
@@ -1286,10 +1553,7 @@
       els.uploadResult.innerHTML = '';
 
       try {
-        const result = await uploadRecords(supabaseClient, parsedRecords, {
-          uploadedBy: currentSession.user.id,
-          sourceFileName: currentFile?.name,
-        });
+        const result = await uploadRecords(supabaseClient, parsedRecords, { uploadedBy: currentSession.user.id, sourceFileName: currentFile?.name });
 
         if (result.errors.length > 0) {
           els.uploadStatus.innerHTML = `<span class="status-badge error">일부 실패</span>`;
@@ -1302,8 +1566,10 @@
             <div class="empty-note">
               ${result.uploaded}건 업로드 완료 (배치 ID: ${result.uploadBatchId.slice(0, 8)}...)<br>
               이번 배치 기준 — 주문 수: ${s ? s.order_count : '-'}건 / 품목 실매출 합계: ${s ? fmtWon(s.total_item_paid_amount) : '-'}<br>
-              <strong>카페24 관리자 화면의 해당 기간 매출 합계와 위 금액을 대조해 정합성을 확인하세요.</strong>
+              <strong>대시보드 탭의 데이터를 자동으로 새로고침했습니다. 카페24 관리자 화면의 매출 합계와 대조해보세요.</strong>
             </div>`;
+          // 업로드 성공 직후 대시보드 데이터를 즉시 재조회하여 반영
+          loadDashboardData();
         }
       } catch (err) {
         els.uploadStatus.innerHTML = `<span class="status-badge error">오류</span>`;
@@ -1313,32 +1579,31 @@
       }
     });
 
-    // Meta 대시보드에서 로그인/로그아웃하는 순간에도 (같은 탭에서 이동해왔거나, supabase-js가
-    // storage 이벤트를 감지한 경우) SIGNED_IN / SIGNED_OUT / TOKEN_REFRESHED / INITIAL_SESSION
-    // 이벤트가 이 리스너로 그대로 전달되어 이 페이지의 UI도 즉시 동기화됩니다.
     supabaseClient.auth.onAuthStateChange((_event, session) => {
       applySession(session);
+      loadDashboardData(); // 로그인/로그아웃 시 대시보드도 즉시 동기화
     });
-
-    // onAuthStateChange가 INITIAL_SESSION을 비동기로 쏴주지만, 초기 렌더를 더 빠르게 하기 위해
-    // 한 번 더 명시적으로 즉시 확인한다 (기존 Meta 대시보드 세션이 있다면 재로그인 없이 바로 반영됨).
     refreshAuthUI();
   }
 
   /* ============================================================
-     10. 부트스트랩
-     ------------------------------------------------------------
-     Chart.js/PapaParse/Supabase-js 는 이 스크립트보다 앞서 <head>에서
-     동기 로드되므로 이 시점엔 이미 성공/실패가 결정돼 있지만, 명시적으로
-     문서 로드 완료 시점(window.onload)에 초기화를 실행해 순서를 보장한다.
+     12. 부트스트랩
      ============================================================ */
   function boot() {
-    initDashboardData();
+    setDefaultDateRange();
+    sharedSupabaseClient = createSharedSupabaseClient();
+
+    if (els2.btnApplyFilter) {
+      els2.btnApplyFilter.addEventListener('click', () => loadDashboardData());
+    }
+
     try {
-      initUploadTab();
+      initUploadTab(sharedSupabaseClient);
     } catch (err) {
       console.error('[대시보드] 업로드 탭 초기화 실패', err);
     }
+
+    loadDashboardData();
   }
 
   if (document.readyState === 'complete') {
