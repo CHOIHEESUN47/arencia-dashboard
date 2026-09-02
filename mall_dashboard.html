@@ -239,6 +239,13 @@
   .filter-label {
     font-size: 12.5px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;
   }
+  .checklist-search {
+    width: 100%; min-width: 220px; max-width: 320px; box-sizing: border-box;
+    font-size: 12.5px; padding: 6px 9px; margin-bottom: 6px;
+    border: 1px solid var(--border); border-radius: 7px;
+    background: var(--surface-1); color: var(--text-primary);
+  }
+  .checklist-search:focus { outline: none; border-color: var(--series-1); }
   .checklist {
     min-width: 220px; max-width: 320px; max-height: 160px; overflow-y: auto;
     border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
@@ -536,11 +543,13 @@
       <h3>필터</h3>
       <div style="display:flex; gap:24px; flex-wrap:wrap; margin-top:8px;">
         <div>
-          <div class="filter-label">캠페인 선택 <span class="metric-tip" style="display:inline; margin:0;">(복수 선택 가능 — 랜딩이 같은 캠페인끼리는 합산해서 봐도 됩니다)</span></div>
+          <div class="filter-label">캠페인 선택 <span class="metric-tip" style="display:inline; margin:0;">(전환 목적 캠페인만 표시 · 복수 선택 가능 — 랜딩이 같은 캠페인끼리는 합산해서 봐도 됩니다)</span></div>
+          <input type="text" class="checklist-search" id="adsCampaignSearch" placeholder="캠페인명 검색...">
           <div id="adsCampaignChecklist" class="checklist"><div class="checklist-empty">불러오는 중...</div></div>
         </div>
         <div>
           <div class="filter-label">상품 선택 <span class="metric-tip" style="display:inline; margin:0;">(복수 선택 가능 — 같은 계열의 다른 코드/옵션을 합산해서 볼 수 있습니다)</span></div>
+          <input type="text" class="checklist-search" id="adsProductSearch" placeholder="상품명 검색...">
           <div id="adsProductChecklist" class="checklist"><div class="checklist-empty">불러오는 중...</div></div>
         </div>
       </div>
@@ -1845,7 +1854,7 @@
   let adsLastStartDate = '';
   let adsLastEndDate = '';
 
-  function renderChecklist(containerId, items, selectedSet) {
+  function renderChecklist(containerId, items, selectedSet, searchInputId) {
     const el = document.getElementById(containerId);
     if (!el) return;
     if (items.length === 0) { el.innerHTML = '<div class="checklist-empty">선택 가능한 항목이 없습니다.</div>'; return; }
@@ -1859,15 +1868,47 @@
       if (e.target.type !== 'checkbox') return;
       if (e.target.checked) selectedSet.add(e.target.value); else selectedSet.delete(e.target.value);
     });
+
+    // SKU/캠페인이 많을 때 스크롤 없이 바로 찾을 수 있도록 검색어로 체크리스트 항목을 숨김/표시.
+    // (체크 상태는 DOM에서 지우지 않고 display만 토글하므로 검색어를 바꿔도 이미 체크한 항목은 유지됨)
+    const searchEl = searchInputId ? document.getElementById(searchInputId) : null;
+    if (searchEl) {
+      searchEl.value = '';
+      searchEl.oninput = () => {
+        const q = searchEl.value.trim().toLowerCase();
+        let visibleCount = 0;
+        el.querySelectorAll('.checklist-item').forEach((label) => {
+          const match = !q || label.textContent.toLowerCase().includes(q);
+          label.style.display = match ? '' : 'none';
+          if (match) visibleCount += 1;
+        });
+        let noMatchEl = el.querySelector('.checklist-no-match');
+        if (visibleCount === 0) {
+          if (!noMatchEl) {
+            noMatchEl = document.createElement('div');
+            noMatchEl.className = 'checklist-empty checklist-no-match';
+            noMatchEl.textContent = '검색 결과가 없습니다.';
+            el.appendChild(noMatchEl);
+          }
+        } else if (noMatchEl) {
+          noMatchEl.remove();
+        }
+      };
+    }
   }
 
   function populateAdsFilters(metaRows, orderItemRows) {
     if (adsFiltersPopulated) return; // 재조회 시 사용자가 이미 고른 체크 상태를 지우지 않기 위해 최초 1회만 렌더링
     adsFiltersPopulated = true;
-    const campaignNames = Array.from(new Set(metaRows.map((r) => r.campaign_name).filter(Boolean))).sort();
+    // 캠페인 필터는 "전환" 목적 캠페인만 노출 (트래픽/컨텐츠 조회/선물하기 등 비전환 캠페인은 제외).
+    // meta_campaign_performance에는 별도 목적(objective) 컬럼이 없어, 캠페인명 명명 규칙(예: "_전환_", "전환(장바구니)")의
+    // "전환" 키워드 포함 여부로 판별합니다. 캠페인명 규칙이 바뀌면 이 필터도 함께 확인해주세요.
+    const campaignNames = Array.from(new Set(
+      metaRows.map((r) => r.campaign_name).filter((name) => name && name.includes('전환'))
+    )).sort();
     const productNames = Array.from(new Set(orderItemRows.map((r) => r.product_name).filter(Boolean))).sort();
-    renderChecklist('adsCampaignChecklist', campaignNames, adsSelectedCampaigns);
-    renderChecklist('adsProductChecklist', productNames, adsSelectedProducts);
+    renderChecklist('adsCampaignChecklist', campaignNames, adsSelectedCampaigns, 'adsCampaignSearch');
+    renderChecklist('adsProductChecklist', productNames, adsSelectedProducts, 'adsProductSearch');
   }
 
   async function loadDashboardData() {
