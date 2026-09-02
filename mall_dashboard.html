@@ -306,6 +306,22 @@
 
     <div class="grid grid-4" id="salesKpis"></div>
 
+    <div class="section-title">방문자 전환율</div>
+    <div class="glossary-card">
+      <span class="g-term">전환율(Conversion Rate)</span>선택 기간 동안 <strong>방문자 중 실제로 결제까지 이어진 비율</strong>입니다 (결제 완료 주문수 ÷ 방문수 × 100). 카페24 애널리틱스는 어느 주문이 어느 방문에서 나왔는지까지는 알려주지 않기 때문에, 회원/비회원으로 나누지 않고 <strong>전체 기준</strong>으로만 계산합니다. "데이터 업로드" 탭에서 방문자 데이터를 먼저 올려야 표시됩니다.
+    </div>
+    <div class="grid grid-2">
+      <div class="card stat-tile">
+        <div class="label">평균 전환율<span class="metric-tip">선택 기간 중 방문자 데이터가 있는 날짜만 집계</span></div>
+        <div class="value" id="conversionAvgValue">-</div>
+      </div>
+      <div class="card">
+        <h3>일별 전환율 추이<span class="hint">%</span></h3>
+        <canvas id="chartConversionTrend" height="120"></canvas>
+        <div class="empty-note" id="conversionEmptyNote" style="display:none;">선택 기간에 업로드된 방문자 데이터가 없습니다. "데이터 업로드" 탭에서 방문자 CSV를 먼저 업로드해주세요.</div>
+      </div>
+    </div>
+
     <div class="section-title">요일별 · 시간대별 매출 추이</div>
     <div class="grid grid-2">
       <div class="card">
@@ -338,37 +354,6 @@
         <table id="payMethodTable"><thead>
           <tr><th>결제수단</th><th class="num">매출</th><th class="num">비중</th><th class="num">건수</th></tr>
         </thead><tbody></tbody></table>
-      </div>
-    </div>
-
-    <div class="section-title">쿠폰 / 프로모션 효과</div>
-    <div class="glossary-card">
-      <span class="g-term">쿠폰 효과</span>선택 기간 동안 쿠폰이 실제로 얼마나 쓰였고, 평균적으로 얼마나 할인해줬는지를 보여줍니다. "쿠폰 사용 고객이 재구매도 많이 하는지"는 재구매&amp;주기 탭에서 별도로 비교합니다.
-    </div>
-    <div class="grid grid-2">
-      <div class="card stat-tile">
-        <div class="label">쿠폰 사용 주문 비중</div>
-        <div class="value" id="couponUsageRateValue">-</div>
-      </div>
-      <div class="card stat-tile">
-        <div class="label">평균 할인율<span class="metric-tip">쿠폰이 적용된 주문 기준</span></div>
-        <div class="value" id="couponAvgDiscountValue">-</div>
-      </div>
-    </div>
-
-    <div class="section-title">방문자 전환율</div>
-    <div class="glossary-card">
-      <span class="g-term">전환율(Conversion Rate)</span>선택 기간 동안 <strong>방문자 중 실제로 결제까지 이어진 비율</strong>입니다 (결제 완료 주문수 ÷ 방문수 × 100). 카페24 애널리틱스는 어느 주문이 어느 방문에서 나왔는지까지는 알려주지 않기 때문에, 회원/비회원으로 나누지 않고 <strong>전체 기준</strong>으로만 계산합니다. "데이터 업로드" 탭에서 방문자 데이터를 먼저 올려야 표시됩니다.
-    </div>
-    <div class="grid grid-2">
-      <div class="card stat-tile">
-        <div class="label">평균 전환율<span class="metric-tip">선택 기간 중 방문자 데이터가 있는 날짜만 집계</span></div>
-        <div class="value" id="conversionAvgValue">-</div>
-      </div>
-      <div class="card">
-        <h3>일별 전환율 추이<span class="hint">%</span></h3>
-        <canvas id="chartConversionTrend" height="120"></canvas>
-        <div class="empty-note" id="conversionEmptyNote" style="display:none;">선택 기간에 업로드된 방문자 데이터가 없습니다. "데이터 업로드" 탭에서 방문자 CSV를 먼저 업로드해주세요.</div>
       </div>
     </div>
 
@@ -837,12 +822,6 @@
       `).join('') : '<tr><td colspan="4" class="empty-note">데이터 없음</td></tr>';
     }
 
-    // 쿠폰/프로모션 효과
-    const couponUsageEl = document.getElementById('couponUsageRateValue');
-    if (couponUsageEl) couponUsageEl.textContent = `${d.coupon.usageRate.toFixed(1)}%`;
-    const couponDiscountEl = document.getElementById('couponAvgDiscountValue');
-    if (couponDiscountEl) couponDiscountEl.textContent = `${d.coupon.avgDiscountRate.toFixed(1)}%`;
-
     // 방문자 전환율
     const conversionAvgEl = document.getElementById('conversionAvgValue');
     const conversionEmptyNote = document.getElementById('conversionEmptyNote');
@@ -1107,6 +1086,8 @@
   }
 
   // 품목 단위 행 → 주문 단위 1행으로 복원 (order_id 기준 첫 행 사용, 주문 단위 필드는 반복되므로 동일)
+  // item_list_amount(상품구매금액)만은 품목마다 다른 값이라 주문 내 전체 품목 합계를 따로 누적한다
+  // (쿠폰 할인율 = coupon_discount_final ÷ 주문의 상품구매금액 합계 계산에 필요).
   function toOrders(rows) {
     const map = new Map();
     for (const r of rows) {
@@ -1121,8 +1102,10 @@
           is_guest: r.is_guest,
           customer_key: r.customer_key,
           coupon_discount_final: r.coupon_discount_final || 0,
+          item_list_amount_sum: 0,
         });
       }
+      map.get(r.order_id).item_list_amount_sum += r.item_list_amount || 0;
     }
     return Array.from(map.values());
   }
@@ -1219,16 +1202,6 @@
     const weekKeys = Array.from(weekBuckets.keys()).sort();
     const avg = (arr) => (arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null);
 
-    // 쿠폰/프로모션 효과: 쿠폰이 적용된 주문 비중과, 그 주문들의 평균 할인율(할인액 ÷ (결제금액+할인액))
-    const couponOrders = paid.filter((o) => (o.coupon_discount_final || 0) > 0);
-    const couponUsageRate = orderCount ? (couponOrders.length / orderCount) * 100 : 0;
-    const avgDiscountRate = couponOrders.length
-      ? couponOrders.reduce((s, o) => {
-          const base = o.order_total_amount + o.coupon_discount_final;
-          return s + (base > 0 ? (o.coupon_discount_final / base) * 100 : 0);
-        }, 0) / couponOrders.length
-      : 0;
-
     // 방문자 전환율: 방문자 데이터가 있는 날짜만 골라 그날의 결제완료 주문수와 짝지어 계산 (근사 없는 전체 기준 지표)
     const conversionDays = (visitorRows || [])
       .map((v) => ({ date: v.visit_date, visits: v.total_visits || 0, orders: ordersByDate.get(v.visit_date) || 0 }))
@@ -1253,7 +1226,6 @@
         guest: weekKeys.map((k) => avg(weekBuckets.get(k).guest)),
       },
       payMethods: Array.from(payMethodMap.values()).sort((a, b) => b.revenue - a.revenue),
-      coupon: { usageRate: couponUsageRate, avgDiscountRate },
       conversion: {
         hasData: conversionDays.length > 0,
         avgRate: avgConversionRate,
