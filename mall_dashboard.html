@@ -341,6 +341,37 @@
       </div>
     </div>
 
+    <div class="section-title">쿠폰 / 프로모션 효과</div>
+    <div class="glossary-card">
+      <span class="g-term">쿠폰 효과</span>선택 기간 동안 쿠폰이 실제로 얼마나 쓰였고, 평균적으로 얼마나 할인해줬는지를 보여줍니다. "쿠폰 사용 고객이 재구매도 많이 하는지"는 재구매&amp;주기 탭에서 별도로 비교합니다.
+    </div>
+    <div class="grid grid-2">
+      <div class="card stat-tile">
+        <div class="label">쿠폰 사용 주문 비중</div>
+        <div class="value" id="couponUsageRateValue">-</div>
+      </div>
+      <div class="card stat-tile">
+        <div class="label">평균 할인율<span class="metric-tip">쿠폰이 적용된 주문 기준</span></div>
+        <div class="value" id="couponAvgDiscountValue">-</div>
+      </div>
+    </div>
+
+    <div class="section-title">방문자 전환율</div>
+    <div class="glossary-card">
+      <span class="g-term">전환율(Conversion Rate)</span>선택 기간 동안 <strong>방문자 중 실제로 결제까지 이어진 비율</strong>입니다 (결제 완료 주문수 ÷ 방문수 × 100). 카페24 애널리틱스는 어느 주문이 어느 방문에서 나왔는지까지는 알려주지 않기 때문에, 회원/비회원으로 나누지 않고 <strong>전체 기준</strong>으로만 계산합니다. "데이터 업로드" 탭에서 방문자 데이터를 먼저 올려야 표시됩니다.
+    </div>
+    <div class="grid grid-2">
+      <div class="card stat-tile">
+        <div class="label">평균 전환율<span class="metric-tip">선택 기간 중 방문자 데이터가 있는 날짜만 집계</span></div>
+        <div class="value" id="conversionAvgValue">-</div>
+      </div>
+      <div class="card">
+        <h3>일별 전환율 추이<span class="hint">%</span></h3>
+        <canvas id="chartConversionTrend" height="120"></canvas>
+        <div class="empty-note" id="conversionEmptyNote" style="display:none;">선택 기간에 업로드된 방문자 데이터가 없습니다. "데이터 업로드" 탭에서 방문자 CSV를 먼저 업로드해주세요.</div>
+      </div>
+    </div>
+
     </div><!-- /#salesContent -->
 
   </section>
@@ -374,6 +405,16 @@
     <div class="card">
       <h3>월별 재구매율<span class="hint">비회원 = 주문자명+전화번호 식별 기준</span></h3>
       <canvas id="chartRepeatRateTrend" height="90"></canvas>
+    </div>
+
+    <div class="section-title">쿠폰 사용 고객 vs 미사용 고객 재구매율</div>
+    <div class="glossary-card">
+      전체 구매 이력 기준으로, <strong>쿠폰을 한 번이라도 사용한 고객</strong>과 <strong>한 번도 사용한 적 없는 고객</strong>의 재구매율을 비교합니다. 쿠폰이 첫 구매 유도에는 효과적이어도 재구매로 이어지는지는 별개일 수 있어, 두 값을 나란히 보면 판단에 도움이 됩니다. (상단 기간 필터와 무관하게 전체 구매 이력 기준입니다.)
+    </div>
+    <div class="card">
+      <table id="couponRepeatTable"><thead>
+        <tr><th>구분</th><th class="num">고객 수</th><th class="num">재구매율</th><th class="num">평균 구매 횟수</th><th class="num">평균 LTV</th></tr>
+      </thead><tbody></tbody></table>
     </div>
 
     </div><!-- /#repeatContent -->
@@ -538,6 +579,38 @@
         <button class="btn btn-primary" id="btnUpload" disabled>Supabase에 업로드</button>
         <span id="uploadStatus" style="margin-left:12px;"></span>
         <div id="uploadResult" style="margin-top:14px;"></div>
+      </div>
+
+      <div class="section-title">4. 방문자 데이터 CSV 선택 <span class="hint" style="font-weight:400;">(선택 — 매출&amp;결제 탭의 전환율 계산용)</span></div>
+      <div class="card">
+        <p class="empty-note" style="margin:0 0 12px;">
+          카페24 관리자 &gt; 통계 &gt; 방문자 분석에서 내보낸 "전체 방문자 수" CSV를 선택하세요.
+          (필수 컬럼: 일시, 전체 방문수, 처음 방문자수, 다시 온 방문자수, 순방문수, 다시 온 방문율)
+        </p>
+        <input type="file" id="visitorFileInput" accept=".csv" class="ui-input">
+        <div id="visitorHeaderCheckResult" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="card" id="visitorPreviewCard" style="display:none;">
+        <div class="legend-row" id="visitorPreviewSummary"></div>
+        <div style="overflow-x:auto; max-height:280px; overflow-y:auto;">
+          <table id="visitorPreviewTable">
+            <thead>
+              <tr><th>일시</th><th class="num">전체 방문수</th><th class="num">처음 방문자수</th><th class="num">다시 온 방문자수</th><th class="num">순방문수</th><th class="num">다시 온 방문율</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="empty-note" id="visitorPreviewMoreNote"></div>
+      </div>
+
+      <div class="card">
+        <p class="empty-note" style="margin:0 0 12px;">
+          <code>visit_date</code>(일시) 기준 upsert이므로 겹치는 날짜를 다시 올려도 최신 값으로 덮어씁니다.
+        </p>
+        <button class="btn btn-primary" id="btnVisitorUpload" disabled>방문자 데이터 Supabase에 업로드</button>
+        <span id="visitorUploadStatus" style="margin-left:12px;"></span>
+        <div id="visitorUploadResult" style="margin-top:14px;"></div>
       </div>
 
     </div>
@@ -763,6 +836,46 @@
         </tr>
       `).join('') : '<tr><td colspan="4" class="empty-note">데이터 없음</td></tr>';
     }
+
+    // 쿠폰/프로모션 효과
+    const couponUsageEl = document.getElementById('couponUsageRateValue');
+    if (couponUsageEl) couponUsageEl.textContent = `${d.coupon.usageRate.toFixed(1)}%`;
+    const couponDiscountEl = document.getElementById('couponAvgDiscountValue');
+    if (couponDiscountEl) couponDiscountEl.textContent = `${d.coupon.avgDiscountRate.toFixed(1)}%`;
+
+    // 방문자 전환율
+    const conversionAvgEl = document.getElementById('conversionAvgValue');
+    const conversionEmptyNote = document.getElementById('conversionEmptyNote');
+    const conversionCanvas = document.getElementById('chartConversionTrend');
+    if (conversionAvgEl) {
+      conversionAvgEl.textContent = d.conversion.hasData && d.conversion.avgRate != null ? `${d.conversion.avgRate.toFixed(2)}%` : '-';
+    }
+    if (d.conversion.hasData) {
+      if (conversionEmptyNote) conversionEmptyNote.style.display = 'none';
+      if (conversionCanvas) conversionCanvas.style.display = '';
+      safeChart('chartConversionTrend', {
+        type: 'line',
+        data: {
+          labels: d.conversion.labels,
+          datasets: [{ label: '전환율', data: d.conversion.rates, borderColor: token('--series-1'), backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2, tension: 0.25, spanGaps: true }],
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: (ctx) => `전환율: ${ctx.parsed.y == null ? '-' : ctx.parsed.y.toFixed(2) + '%'}` } },
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { ...baseTicks, maxRotation: 0, autoSkip: true } },
+            y: { grid: baseGrid, ticks: { ...baseTicks, callback: (v) => `${v}%` } },
+          },
+        },
+      });
+    } else {
+      if (conversionEmptyNote) conversionEmptyNote.style.display = '';
+      if (conversionCanvas) conversionCanvas.style.display = 'none';
+    }
   }
 
   /* ============================================================
@@ -805,6 +918,24 @@
         },
       },
     });
+
+    const cc = d.couponComparison;
+    const couponRepeatTbody = document.querySelector('#couponRepeatTable tbody');
+    if (couponRepeatTbody && cc) {
+      const rows = [
+        { label: '쿠폰 사용 고객', g: cc.coupon },
+        { label: '쿠폰 미사용 고객', g: cc.nonCoupon },
+      ];
+      couponRepeatTbody.innerHTML = rows.map((r) => `
+        <tr>
+          <td>${r.label}</td>
+          <td class="num">${fmtNum(r.g.count)}</td>
+          <td class="num">${r.g.repeatRate.toFixed(1)}%</td>
+          <td class="num">${r.g.avgOrderCount.toFixed(1)}회</td>
+          <td class="num">${fmtWon(r.g.avgLtv)}</td>
+        </tr>
+      `).join('');
+    }
   }
 
   /* ============================================================
@@ -923,10 +1054,35 @@
     'order_id', 'order_item_id', 'order_datetime', 'cancel_type', 'order_status',
     'payment_method', 'order_total_amount', 'item_paid_amount', 'item_list_amount',
     'quantity', 'product_name', 'option_name', 'member_id', 'customer_key', 'is_guest',
+    'coupon_discount_final',
   ].join(', ');
 
   function toRangeStartISO(dateStr) { return dateStr ? `${dateStr}T00:00:00+09:00` : null; }
   function toRangeEndISO(dateStr) { return dateStr ? `${dateStr}T23:59:59+09:00` : null; }
+
+  // order_datetime(UTC ISO)을 방문자 데이터(visit_date, KST 달력 기준 날짜)와 같은 키로 맞추기 위한 변환.
+  // new Date(iso).getDate() 등은 브라우저 로컬 타임존을 쓰기 때문에, 서버/사용자 타임존과 무관하게
+  // 항상 KST(UTC+9) 기준 날짜를 얻으려면 UTC epoch에 9시간을 더해 UTC getter로 읽어야 한다.
+  function toKstDateKey(iso) {
+    if (!iso) return null;
+    const t = new Date(iso).getTime() + 9 * 3600 * 1000;
+    const d = new Date(t);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  }
+
+  const DAILY_VISITOR_COLUMNS = ['visit_date', 'total_visits', 'new_visitors', 'returning_visitors', 'unique_visitors', 'returning_rate'].join(', ');
+
+  async function fetchDailyVisitors(supabaseClient, { startDate, endDate } = {}) {
+    let q = supabaseClient
+      .from('cafe24_daily_visitors')
+      .select(DAILY_VISITOR_COLUMNS)
+      .order('visit_date', { ascending: true });
+    if (startDate) q = q.gte('visit_date', startDate);
+    if (endDate) q = q.lte('visit_date', endDate);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data || [];
+  }
 
   async function fetchOrderItems(supabaseClient, { startISO, endISO } = {}) {
     const pageSize = 1000;
@@ -964,6 +1120,7 @@
           member_id: r.member_id,
           is_guest: r.is_guest,
           customer_key: r.customer_key,
+          coupon_discount_final: r.coupon_discount_final || 0,
         });
       }
     }
@@ -987,6 +1144,7 @@
       c.lastOrderAt = c.orders[c.orders.length - 1].order_datetime;
       c.orderCount = c.orders.length;
       c.totalRevenue = c.orders.reduce((s, o) => s + o.order_total_amount, 0);
+      c.everCoupon = c.orders.some((o) => (o.coupon_discount_final || 0) > 0);
       c.orders.forEach((o, i) => orderIdToNth.set(o.order_id, i + 1));
     }
     return { byCustomer, orderIdToNth };
@@ -1021,7 +1179,7 @@
     return '기타/선불금';
   }
 
-  function buildSalesAnalytics(rangeOrders, orderIdToNth) {
+  function buildSalesAnalytics(rangeOrders, orderIdToNth, visitorRows) {
     const paid = rangeOrders.filter((o) => o.order_status === 'paid');
     const canceled = rangeOrders.filter((o) => o.order_status !== 'paid');
     const totalRevenue = paid.reduce((s, o) => s + o.order_total_amount, 0);
@@ -1034,6 +1192,7 @@
     const hourSums = new Array(24).fill(0);
     const payMethodMap = new Map();
     const weekBuckets = new Map();
+    const ordersByDate = new Map(); // KST 날짜 -> 결제완료 주문수 (방문자 전환율 계산용)
 
     for (const o of paid) {
       const d = new Date(o.order_datetime);
@@ -1052,10 +1211,31 @@
       if (o.is_guest) bucket.guest.push(o.order_total_amount);
       else if ((orderIdToNth.get(o.order_id) || 1) === 1) bucket.new.push(o.order_total_amount);
       else bucket.repeat.push(o.order_total_amount);
+
+      const dateKey = toKstDateKey(o.order_datetime);
+      ordersByDate.set(dateKey, (ordersByDate.get(dateKey) || 0) + 1);
     }
 
     const weekKeys = Array.from(weekBuckets.keys()).sort();
     const avg = (arr) => (arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null);
+
+    // 쿠폰/프로모션 효과: 쿠폰이 적용된 주문 비중과, 그 주문들의 평균 할인율(할인액 ÷ (결제금액+할인액))
+    const couponOrders = paid.filter((o) => (o.coupon_discount_final || 0) > 0);
+    const couponUsageRate = orderCount ? (couponOrders.length / orderCount) * 100 : 0;
+    const avgDiscountRate = couponOrders.length
+      ? couponOrders.reduce((s, o) => {
+          const base = o.order_total_amount + o.coupon_discount_final;
+          return s + (base > 0 ? (o.coupon_discount_final / base) * 100 : 0);
+        }, 0) / couponOrders.length
+      : 0;
+
+    // 방문자 전환율: 방문자 데이터가 있는 날짜만 골라 그날의 결제완료 주문수와 짝지어 계산 (근사 없는 전체 기준 지표)
+    const conversionDays = (visitorRows || [])
+      .map((v) => ({ date: v.visit_date, visits: v.total_visits || 0, orders: ordersByDate.get(v.visit_date) || 0 }))
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const convVisitsSum = conversionDays.reduce((s, d) => s + d.visits, 0);
+    const convOrdersSum = conversionDays.reduce((s, d) => s + d.orders, 0);
+    const avgConversionRate = convVisitsSum ? (convOrdersSum / convVisitsSum) * 100 : null;
 
     return {
       kpis: [
@@ -1073,6 +1253,13 @@
         guest: weekKeys.map((k) => avg(weekBuckets.get(k).guest)),
       },
       payMethods: Array.from(payMethodMap.values()).sort((a, b) => b.revenue - a.revenue),
+      coupon: { usageRate: couponUsageRate, avgDiscountRate },
+      conversion: {
+        hasData: conversionDays.length > 0,
+        avgRate: avgConversionRate,
+        labels: conversionDays.map((d) => d.date),
+        rates: conversionDays.map((d) => (d.visits ? +((d.orders / d.visits) * 100).toFixed(2) : null)),
+      },
     };
   }
 
@@ -1139,6 +1326,20 @@
     }
     const monthKeys = Array.from(monthMap.keys()).sort();
 
+    // 쿠폰 사용 고객 vs 미사용 고객 재구매율 비교 (전체 구매 이력 기준 — byCustomer는 all-time 인덱스)
+    const couponCustomers = [];
+    const nonCouponCustomers = [];
+    for (const c of byCustomer.values()) {
+      (c.everCoupon ? couponCustomers : nonCouponCustomers).push(c);
+    }
+    function summarizeGroup(list) {
+      const count = list.length;
+      const repeatCount = list.filter((c) => c.orderCount >= 2).length;
+      const avgOrderCount = count ? list.reduce((s, c) => s + c.orderCount, 0) / count : 0;
+      const avgLtv = count ? list.reduce((s, c) => s + c.totalRevenue, 0) / count : 0;
+      return { count, repeatRate: count ? (repeatCount / count) * 100 : 0, avgOrderCount, avgLtv };
+    }
+
     return {
       kpis: [
         { label: '재구매율 (회원)', value: `${memberRepeatRate.toFixed(1)}%`, delta: null },
@@ -1152,6 +1353,10 @@
         labels: monthKeys,
         member: monthKeys.map((k) => { const r = monthMap.get(k); return r.memberTotal ? +(r.memberRepeat / r.memberTotal * 100).toFixed(1) : 0; }),
         guest: monthKeys.map((k) => { const r = monthMap.get(k); return r.guestTotal ? +(r.guestRepeat / r.guestTotal * 100).toFixed(1) : 0; }),
+      },
+      couponComparison: {
+        coupon: summarizeGroup(couponCustomers),
+        nonCoupon: summarizeGroup(nonCouponCustomers),
       },
     };
   }
@@ -1381,6 +1586,15 @@
 
     if (els2.filterNote) els2.filterNote.textContent = `전체 ${fmtNum(allTimeRows.length)}행 · 선택 기간 ${fmtNum(rangeRows.length)}행`;
 
+    // 방문자 데이터(전환율 계산용) — 아직 한 번도 업로드 안 했거나 테이블이 없을 수 있어 실패해도 대시보드 전체를 막지 않는다.
+    let rangeVisitorRows = [];
+    try {
+      rangeVisitorRows = await fetchDailyVisitors(sharedSupabaseClient, { startDate, endDate });
+    } catch (err) {
+      console.warn('[대시보드] 방문자 데이터 조회 실패 (전환율 카드는 빈 상태로 표시됩니다)', err);
+      rangeVisitorRows = [];
+    }
+
     const allOrders = toOrders(allTimeRows);
     const rangeOrders = toOrders(rangeRows);
     const { byCustomer, orderIdToNth } = buildCustomerIndex(allOrders);
@@ -1394,7 +1608,7 @@
       setTabState('sales', 'content');
       setTabState('repeat', 'content');
       setTabState('product', 'content');
-      try { renderSalesTab(buildSalesAnalytics(rangeOrders, orderIdToNth)); } catch (e) { console.error('[대시보드] 매출&결제 렌더 실패', e); }
+      try { renderSalesTab(buildSalesAnalytics(rangeOrders, orderIdToNth, rangeVisitorRows)); } catch (e) { console.error('[대시보드] 매출&결제 렌더 실패', e); }
       try { renderRepeatTab(buildRepeatAnalytics(rangeOrders, byCustomer, orderIdToNth)); } catch (e) { console.error('[대시보드] 재구매&주기 렌더 실패', e); }
       try { renderProductTab(buildProductAnalytics(rangeRows)); } catch (e) { console.error('[대시보드] 상품&옵션 렌더 실패', e); }
     }
@@ -1600,6 +1814,74 @@
   }
 
   /* ============================================================================
+     10-b. 카페24 애널리틱스 방문자 CSV 파서 (일별 "전체 방문자 수" export)
+     원본 헤더: 일시, 전체 방문수, 처음 방문자수, 다시 온 방문자수, 순방문수, 다시 온 방문율, 비교값, 증감
+     "비교값/증감"은 저장하지 않음 (대시보드에서 직접 집계하므로 불필요).
+     ============================================================================ */
+  const REQUIRED_HEADERS_VISITOR = ['일시', '전체 방문수', '처음 방문자수', '다시 온 방문자수', '순방문수', '다시 온 방문율'];
+
+  function checkHeadersVisitor(headers) {
+    const missing = REQUIRED_HEADERS_VISITOR.filter((h) => !headers.includes(h));
+    return { ok: missing.length === 0, missing };
+  }
+
+  function parseVisitorFile(file) {
+    return new Promise((resolve, reject) => {
+      if (typeof Papa === 'undefined') {
+        reject(new Error('PapaParse가 로드되지 않았습니다.'));
+        return;
+      }
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        encoding: 'UTF-8',
+        complete: (result) => {
+          try {
+            const headers = result.meta.fields || [];
+            const headerCheck = checkHeadersVisitor(headers);
+            if (!headerCheck.ok) {
+              resolve({ records: [], headerCheck, raw: result.data });
+              return;
+            }
+            const rows = [];
+            for (const raw of result.data) {
+              const visitDate = (raw['일시'] || '').trim();
+              if (!visitDate) continue;
+              rows.push({
+                visit_date: visitDate,
+                total_visits: Math.round(toNumber(raw['전체 방문수'])),
+                new_visitors: Math.round(toNumber(raw['처음 방문자수'])),
+                returning_visitors: Math.round(toNumber(raw['다시 온 방문자수'])),
+                unique_visitors: Math.round(toNumber(raw['순방문수'])),
+                returning_rate: toNumber(raw['다시 온 방문율']),
+              });
+            }
+            resolve({ records: rows, headerCheck, raw: result.data });
+          } catch (err) {
+            reject(err);
+          }
+        },
+        error: (err) => reject(err),
+      });
+    });
+  }
+
+  async function uploadVisitorRecords(supabaseClient, records, { uploadedBy, sourceFileName, chunkSize = 500 } = {}) {
+    const uploadBatchId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const payload = records.map((r) => ({ ...r, upload_batch_id: uploadBatchId, source_file_name: sourceFileName || null, uploaded_by: uploadedBy || null, uploaded_at: now }));
+
+    let uploaded = 0;
+    const errors = [];
+    for (let i = 0; i < payload.length; i += chunkSize) {
+      const chunk = payload.slice(i, i + chunkSize);
+      const { error } = await supabaseClient.from('cafe24_daily_visitors').upsert(chunk, { onConflict: 'visit_date' });
+      if (error) errors.push({ chunkStart: i, error }); else uploaded += chunk.length;
+    }
+    return { uploadBatchId, uploaded, total: payload.length, errors };
+  }
+
+  /* ============================================================================
      11. 업로드 탭 UI 배선 (대시보드와 동일한 Supabase 클라이언트 공유)
      ============================================================================ */
   const SUPABASE_URL = 'https://xemutoupgtdqreywucic.supabase.co';
@@ -1644,6 +1926,15 @@
       btnUpload: document.getElementById('btnUpload'),
       uploadStatus: document.getElementById('uploadStatus'),
       uploadResult: document.getElementById('uploadResult'),
+      visitorFileInput: document.getElementById('visitorFileInput'),
+      visitorHeaderCheckResult: document.getElementById('visitorHeaderCheckResult'),
+      visitorPreviewCard: document.getElementById('visitorPreviewCard'),
+      visitorPreviewSummary: document.getElementById('visitorPreviewSummary'),
+      visitorPreviewTableBody: document.querySelector('#visitorPreviewTable tbody'),
+      visitorPreviewMoreNote: document.getElementById('visitorPreviewMoreNote'),
+      btnVisitorUpload: document.getElementById('btnVisitorUpload'),
+      visitorUploadStatus: document.getElementById('visitorUploadStatus'),
+      visitorUploadResult: document.getElementById('visitorUploadResult'),
     };
 
     if (!els.authLoggedOut) return;
@@ -1658,6 +1949,8 @@
     let currentSession = null;
     let parsedRecords = null;
     let currentFile = null;
+    let parsedVisitorRecords = null;
+    let currentVisitorFile = null;
 
     function applySession(session) {
       currentSession = session || null;
@@ -1782,6 +2075,84 @@
         els.uploadResult.innerHTML = `<div class="empty-note">${err.message}</div>`;
       } finally {
         els.btnUpload.disabled = false;
+      }
+    });
+
+    els.visitorFileInput?.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      currentVisitorFile = file;
+      parsedVisitorRecords = null;
+      if (els.btnVisitorUpload) els.btnVisitorUpload.disabled = true;
+      els.visitorHeaderCheckResult.innerHTML = '<span class="empty-note">분석 중...</span>';
+      if (els.visitorPreviewTableBody) els.visitorPreviewTableBody.innerHTML = '';
+      if (els.visitorPreviewCard) els.visitorPreviewCard.style.display = 'none';
+      els.visitorUploadResult.innerHTML = '';
+
+      let result;
+      try {
+        result = await parseVisitorFile(file);
+      } catch (err) {
+        els.visitorHeaderCheckResult.innerHTML = `<span class="status-badge error">파싱 실패</span> <span class="empty-note">${err.message}</span>`;
+        return;
+      }
+
+      const { records, headerCheck } = result;
+      if (!headerCheck.ok) {
+        els.visitorHeaderCheckResult.innerHTML = `<span class="status-badge error">필수 컬럼 누락</span><div class="empty-note">다음 컬럼이 CSV에 없습니다: ${headerCheck.missing.join(', ')}</div>`;
+        return;
+      }
+      els.visitorHeaderCheckResult.innerHTML = `<span class="status-badge ok">필수 컬럼 확인 완료</span>`;
+
+      parsedVisitorRecords = records;
+      renderVisitorPreview(records);
+      if (els.btnVisitorUpload) els.btnVisitorUpload.disabled = records.length === 0;
+    });
+
+    function renderVisitorPreview(records) {
+      if (!els.visitorPreviewCard) return;
+      els.visitorPreviewCard.style.display = records.length ? 'block' : 'none';
+      const totalVisits = records.reduce((s, r) => s + r.total_visits, 0);
+      els.visitorPreviewSummary.innerHTML = `
+        <div class="item"><span class="swatch" style="background:${token('--series-1')}"></span>총 ${records.length}일치</div>
+        <div class="item"><span class="swatch" style="background:${token('--good')}"></span>합계 방문수 ${fmtNum(totalVisits)}</div>
+      `;
+      const preview = records.slice(0, 30);
+      els.visitorPreviewTableBody.innerHTML = preview.map((r) => `
+        <tr>
+          <td>${r.visit_date}</td>
+          <td class="num">${fmtNum(r.total_visits)}</td>
+          <td class="num">${fmtNum(r.new_visitors)}</td>
+          <td class="num">${fmtNum(r.returning_visitors)}</td>
+          <td class="num">${fmtNum(r.unique_visitors)}</td>
+          <td class="num">${r.returning_rate}%</td>
+        </tr>
+      `).join('');
+      els.visitorPreviewMoreNote.textContent = records.length > 30 ? `상위 30행만 표시 (전체 ${records.length}행)` : '';
+    }
+
+    els.btnVisitorUpload?.addEventListener('click', async () => {
+      if (!parsedVisitorRecords || !currentSession) return;
+      els.btnVisitorUpload.disabled = true;
+      els.visitorUploadStatus.textContent = '업로드 중...';
+      els.visitorUploadResult.innerHTML = '';
+
+      try {
+        const result = await uploadVisitorRecords(supabaseClient, parsedVisitorRecords, { uploadedBy: currentSession.user.id, sourceFileName: currentVisitorFile?.name });
+        if (result.errors.length > 0) {
+          els.visitorUploadStatus.innerHTML = `<span class="status-badge error">일부 실패</span>`;
+          els.visitorUploadResult.innerHTML = `<div class="empty-note">${result.uploaded}/${result.total}건 성공, ${result.errors.length}개 청크 실패. 콘솔 로그를 확인하세요. (cafe24_daily_visitors 테이블이 아직 없다면 schema_cafe24.sql의 6번 섹션을 Supabase에 먼저 실행해주세요.)</div>`;
+          console.error('cafe24 visitor upload errors', result.errors);
+        } else {
+          els.visitorUploadStatus.innerHTML = `<span class="status-badge ok">완료</span>`;
+          els.visitorUploadResult.innerHTML = `<div class="empty-note">${result.uploaded}건 업로드 완료. 매출&결제 탭의 전환율 카드/차트를 자동으로 새로고침했습니다.</div>`;
+          loadDashboardData();
+        }
+      } catch (err) {
+        els.visitorUploadStatus.innerHTML = `<span class="status-badge error">오류</span>`;
+        els.visitorUploadResult.innerHTML = `<div class="empty-note">${err.message}</div>`;
+      } finally {
+        els.btnVisitorUpload.disabled = false;
       }
     });
 
