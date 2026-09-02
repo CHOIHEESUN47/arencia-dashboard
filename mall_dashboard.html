@@ -235,6 +235,22 @@
     margin-top: 2px;
   }
 
+  /* ---- 광고&전환 트래킹: 캠페인/상품 복수 선택 체크리스트 ---- */
+  .filter-label {
+    font-size: 12.5px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;
+  }
+  .checklist {
+    min-width: 220px; max-width: 320px; max-height: 160px; overflow-y: auto;
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+    background: var(--page);
+  }
+  .checklist-item {
+    display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-secondary);
+    padding: 3px 0; cursor: pointer;
+  }
+  .checklist-item input { accent-color: var(--series-1); cursor: pointer; }
+  .checklist-empty { font-size: 12px; color: var(--text-muted); padding: 4px 0; }
+
   /* ---- 빈 상태 / 로그인 필요 안내 ---- */
   .empty-state {
     text-align: center; padding: 48px 20px; color: var(--text-secondary);
@@ -275,6 +291,7 @@
     <button data-tab="repeat">재구매 &amp; 주기</button>
     <button data-tab="rfm">RFM &amp; 코호트</button>
     <button data-tab="product">상품 &amp; 옵션</button>
+    <button data-tab="ads">광고 &amp; 전환 트래킹</button>
     <button data-tab="upload">데이터 업로드</button>
   </nav>
 
@@ -507,7 +524,61 @@
   </section>
 
   <!-- ============================================================ -->
-  <!-- TAB 5. 데이터 업로드                                           -->
+  <!-- TAB 5. 광고 & 전환 트래킹 (Meta 캠페인 × 카페24 상품, 기간 상관관계)   -->
+  <!-- ============================================================ -->
+  <section class="panel" id="panel-ads">
+
+    <div class="glossary-card">
+      <span class="g-term">주의</span>이 탭은 선택한 캠페인(들)의 광고 성과와 선택한 상품(들)의 자사몰 매출을 <strong>같은 날짜 기준으로 나란히 비교</strong>하는 지표입니다. 카페24 주문 데이터에는 광고 클릭과 주문을 연결하는 정보(UTM, 클릭 ID 등)가 없기 때문에, "이 광고를 클릭한 사람이 실제로 이 상품을 샀다"는 것을 증명하는 <strong>진짜 어트리뷰션(귀속) 지표가 아니라 기간 상관관계 지표</strong>입니다. 참고용으로만 활용해주세요.
+    </div>
+
+    <div class="card">
+      <h3>필터</h3>
+      <div style="display:flex; gap:24px; flex-wrap:wrap; margin-top:8px;">
+        <div>
+          <div class="filter-label">캠페인 선택 <span class="metric-tip" style="display:inline; margin:0;">(복수 선택 가능 — 랜딩이 같은 캠페인끼리는 합산해서 봐도 됩니다)</span></div>
+          <div id="adsCampaignChecklist" class="checklist"><div class="checklist-empty">불러오는 중...</div></div>
+        </div>
+        <div>
+          <div class="filter-label">상품 선택 <span class="metric-tip" style="display:inline; margin:0;">(복수 선택 가능 — 같은 계열의 다른 코드/옵션을 합산해서 볼 수 있습니다)</span></div>
+          <div id="adsProductChecklist" class="checklist"><div class="checklist-empty">불러오는 중...</div></div>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="btnApplyAdsFilter" style="margin-top:14px;">적용</button>
+      <span class="empty-note" id="adsFilterNote" style="margin-left:10px;"></span>
+    </div>
+
+    <div class="grid grid-3" id="adsKpis" style="margin-top:16px;"></div>
+
+    <div class="section-title">일별 전환율 추이<span class="member-only-badge" style="color:var(--text-muted); background:transparent; padding:0;">주문건수 ÷ 클릭수</span></div>
+    <div class="card">
+      <canvas id="chartAdsConversion" height="90"></canvas>
+      <div class="empty-note" id="adsEmptyNote" style="display:none;">선택한 캠페인·상품·기간에 해당하는 데이터가 없습니다. 상단 필터에서 캠페인과 상품을 하나 이상 선택해주세요.</div>
+    </div>
+
+    <div class="section-title">일별 유입 vs 매출건수</div>
+    <div class="card">
+      <canvas id="chartAdsClicksOrders" height="90"></canvas>
+    </div>
+
+    <div class="section-title">CPA 추이<span class="metric-tip" style="display:inline; margin:0;">건당 획득비용 = 광고비 ÷ 주문건수</span></div>
+    <div class="card">
+      <canvas id="chartAdsCpa" height="90"></canvas>
+    </div>
+
+    <div class="section-title">일자별 성과표</div>
+    <div class="card">
+      <div style="overflow-x:auto; max-height:400px; overflow-y:auto;">
+        <table id="adsDetailTable"><thead>
+          <tr><th>날짜</th><th class="num">광고비</th><th class="num">클릭수</th><th class="num">주문건수</th><th class="num">매출액</th><th class="num">전환율</th><th class="num">CPA</th><th class="num">ROAS</th></tr>
+        </thead><tbody></tbody></table>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- TAB 6. 데이터 업로드                                           -->
   <!-- ============================================================ -->
   <section class="panel" id="panel-upload">
 
@@ -649,6 +720,9 @@
   }
   function fmtWon(n) { return '₩' + Math.round(n || 0).toLocaleString('ko-KR'); }
   function fmtNum(n) { return Math.round(n || 0).toLocaleString('ko-KR'); }
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
 
   const CHART_READY = typeof window.Chart !== 'undefined';
   if (!CHART_READY) {
@@ -740,9 +814,6 @@
   }
   const ALL_TABS = ['sales', 'repeat', 'rfm', 'product'];
   function showGlobalEmptyState(title, desc) { ALL_TABS.forEach((k) => setTabState(k, 'empty', title, desc)); }
-  function showLoginRequired() {
-    showGlobalEmptyState('로그인이 필요합니다', '"데이터 업로드" 탭에서 로그인하면 대시보드가 표시됩니다.');
-  }
 
   /* ============================================================
      3. RENDER: KPI TILES
@@ -1052,10 +1123,141 @@
     }
   }
 
+  /* ============================================================
+     7-b. RENDER: TAB 5 — 광고 & 전환 트래킹
+     ============================================================ */
+  function renderAdsTab(d) {
+    const emptyNote = document.getElementById('adsEmptyNote');
+    const conversionCanvas = document.getElementById('chartAdsConversion');
+    const clicksOrdersCanvas = document.getElementById('chartAdsClicksOrders');
+    const cpaCanvas = document.getElementById('chartAdsCpa');
+
+    if (!d.hasSelection) {
+      renderKpis('adsKpis', [
+        { label: '총 광고비', value: '-', delta: null },
+        { label: '총 클릭수', value: '-', delta: null },
+        { label: '총 구매건수', value: '-', delta: null },
+        { label: '전환율', value: '-', delta: null },
+        { label: 'CPA', value: '-', delta: null },
+        { label: 'ROAS', value: '-', delta: null },
+      ]);
+      if (emptyNote) { emptyNote.style.display = ''; emptyNote.textContent = '캠페인과 상품을 하나 이상 선택한 뒤 "적용"을 눌러주세요.'; }
+      [conversionCanvas, clicksOrdersCanvas, cpaCanvas].forEach((c) => { if (c) c.style.display = 'none'; });
+      const tbody = document.querySelector('#adsDetailTable tbody');
+      if (tbody) tbody.innerHTML = '';
+      return;
+    }
+
+    const t = d.totals;
+    renderKpis('adsKpis', [
+      { label: '총 광고비', value: fmtWon(t.spend), delta: null },
+      { label: '총 클릭수', value: `${fmtNum(t.clicks)}회`, delta: null },
+      { label: '총 구매건수', value: `${fmtNum(t.orders)}건`, delta: null },
+      { label: '전환율', value: t.conversionRate != null ? `${t.conversionRate.toFixed(2)}%` : '-', delta: null },
+      { label: 'CPA', value: t.cpa != null ? fmtWon(t.cpa) : '-', delta: null },
+      { label: 'ROAS', value: t.roas != null ? `${t.roas.toFixed(2)}x` : '-', delta: null },
+    ]);
+
+    if (!d.hasData) {
+      if (emptyNote) { emptyNote.style.display = ''; emptyNote.textContent = '선택한 캠페인·상품·기간에 해당하는 데이터가 없습니다.'; }
+      [conversionCanvas, clicksOrdersCanvas, cpaCanvas].forEach((c) => { if (c) c.style.display = 'none'; });
+      const tbody = document.querySelector('#adsDetailTable tbody');
+      if (tbody) tbody.innerHTML = '';
+      return;
+    }
+
+    if (emptyNote) emptyNote.style.display = 'none';
+    [conversionCanvas, clicksOrdersCanvas, cpaCanvas].forEach((c) => { if (c) c.style.display = ''; });
+
+    const labels = d.days.map((x) => x.date);
+
+    safeChart('chartAdsConversion', {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{ label: '전환율', data: d.days.map((x) => x.conversionRate), borderColor: token('--series-1'), backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2, tension: 0.25, spanGaps: true }],
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `전환율: ${ctx.parsed.y == null ? '-' : ctx.parsed.y.toFixed(2) + '%'}` } },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { ...baseTicks, maxRotation: 0, autoSkip: true } },
+          y: { grid: baseGrid, ticks: { ...baseTicks, callback: (v) => `${v}%` } },
+        },
+      },
+    });
+
+    safeChart('chartAdsClicksOrders', {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: '클릭수', data: d.days.map((x) => x.clicks), borderColor: token('--series-3'), backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2, tension: 0.25, yAxisID: 'y' },
+          { label: '주문건수', data: d.days.map((x) => x.orders), borderColor: token('--series-2'), backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2, tension: 0.25, yAxisID: 'y1' },
+        ],
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${fmtNum(ctx.parsed.y)}` } },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { ...baseTicks, maxRotation: 0, autoSkip: true } },
+          y: { position: 'left', grid: baseGrid, ticks: { ...baseTicks, callback: (v) => fmtNum(v) }, title: { display: true, text: '클릭수', color: token('--text-muted'), font: { size: 11 } } },
+          y1: { position: 'right', grid: { display: false }, ticks: { ...baseTicks, callback: (v) => fmtNum(v) }, title: { display: true, text: '주문건수', color: token('--text-muted'), font: { size: 11 } } },
+        },
+      },
+    });
+
+    safeChart('chartAdsCpa', {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{ label: 'CPA', data: d.days.map((x) => x.cpa), borderColor: token('--series-4'), backgroundColor: 'transparent', borderWidth: 2, pointRadius: 2, tension: 0.25, spanGaps: true }],
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `CPA: ${ctx.parsed.y == null ? '-' : fmtWon(ctx.parsed.y)}` } },
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { ...baseTicks, maxRotation: 0, autoSkip: true } },
+          y: { grid: baseGrid, ticks: { ...baseTicks, callback: (v) => fmtWon(v) } },
+        },
+      },
+    });
+
+    const tbody = document.querySelector('#adsDetailTable tbody');
+    if (tbody) {
+      tbody.innerHTML = d.days.map((x) => `
+        <tr>
+          <td>${x.date}</td>
+          <td class="num">${fmtWon(x.spend)}</td>
+          <td class="num">${fmtNum(x.clicks)}</td>
+          <td class="num">${fmtNum(x.orders)}</td>
+          <td class="num">${fmtWon(x.revenue)}</td>
+          <td class="num">${x.conversionRate != null ? x.conversionRate.toFixed(2) + '%' : '-'}</td>
+          <td class="num">${x.cpa != null ? fmtWon(x.cpa) : '-'}</td>
+          <td class="num">${x.roas != null ? x.roas.toFixed(2) + 'x' : '-'}</td>
+        </tr>
+      `).join('');
+    }
+  }
+
   /* ============================================================================
      8. 실데이터 분석 엔진
      ------------------------------------------------------------------------------
-     Supabase의 cafe24_order_items 원본 테이블에서 행을 가져와 브라우저에서 직접 집계합니다.
+     Supabase의 v_cafe24_order_items_public 뷰(cafe24_order_items 원본 테이블에서 PII 컬럼을 제외한
+     공개 조회 전용 뷰, 로그인 없이도 anon 권한으로 SELECT 가능)에서 행을 가져와 브라우저에서 직접 집계합니다.
+     CSV 업로드(쓰기)는 여전히 원본 테이블(cafe24_order_items)을 대상으로 하며 로그인이 필요합니다.
      - allTimeRows: 기간 제한 없이 전체 이력 (재구매 Nth/최초구매일/RFM/코호트 계산에 필요)
      - rangeRows:   상단 날짜 필터로 gte/lte 조건을 걸어 조회한 선택 기간 데이터
        (매출&결제 / 재구매&주기 / 상품&옵션 탭은 rangeRows 기준, RFM&코호트는 항상 allTimeRows 기준)
@@ -1095,13 +1297,36 @@
     return data || [];
   }
 
+  // 광고 & 전환 트래킹 탭: Meta 대시보드와 동일 Supabase 프로젝트의 meta_campaign_performance 테이블
+  // (라이브 Meta 대시보드 코드에서 실제 사용 중인 테이블명/컬럼명을 확인해 그대로 맞춤 — 캠페인 단위 일별 집계).
+  const META_CAMPAIGN_COLUMNS = ['date', 'campaign_id', 'campaign_name', 'spend', 'clicks'].join(', ');
+
+  async function fetchAllMetaCampaignRows(supabaseClient) {
+    const pageSize = 1000;
+    let all = [];
+    let from = 0;
+    for (;;) {
+      const { data, error } = await supabaseClient
+        .from('meta_campaign_performance')
+        .select(META_CAMPAIGN_COLUMNS)
+        .order('date', { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      all = all.concat(data);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    return all;
+  }
+
   async function fetchOrderItems(supabaseClient, { startISO, endISO } = {}) {
     const pageSize = 1000;
     let all = [];
     let from = 0;
     for (;;) {
       let q = supabaseClient
-        .from('cafe24_order_items')
+        .from('v_cafe24_order_items_public')
         .select(ORDER_ITEM_COLUMNS)
         .order('order_datetime', { ascending: true })
         .range(from, from + pageSize - 1);
@@ -1466,6 +1691,80 @@
   }
 
   /* ============================================================================
+     8-b. 광고 & 전환 트래킹: 선택된 캠페인(들)의 일별 광고비/클릭수와
+          선택된 상품(들)의 일별 주문건수/매출을 날짜 기준으로 합쳐 계산.
+          날짜로만 엮는 "기간 상관관계" 지표 — 광고 클릭과 실제 주문을 1:1로
+          연결하는 정보(UTM 등)가 없으므로 진짜 어트리뷰션이 아님(탭 상단 안내문 참고).
+     ============================================================================ */
+  function buildAdsAnalytics(rangeItemRows, allMetaCampaignRows, selectedCampaigns, selectedProducts, startDate, endDate) {
+    const hasSelection = selectedCampaigns.size > 0 && selectedProducts.size > 0;
+
+    // 선택된 캠페인들의 일별 광고비/클릭수 합산 (상단의 기간 필터와 동일한 날짜 범위로 제한)
+    const metaByDate = new Map();
+    if (hasSelection) {
+      for (const r of allMetaCampaignRows) {
+        if (!selectedCampaigns.has(r.campaign_name)) continue;
+        if (startDate && r.date < startDate) continue;
+        if (endDate && r.date > endDate) continue;
+        const key = r.date;
+        if (!metaByDate.has(key)) metaByDate.set(key, { spend: 0, clicks: 0 });
+        const rec = metaByDate.get(key);
+        rec.spend += r.spend || 0;
+        rec.clicks += r.clicks || 0;
+      }
+    }
+
+    // 선택된 상품(들)이 포함된 결제완료 주문의 일별 주문건수(distinct order_id)/매출(item_paid_amount 합)
+    const ordersByDate = new Map(); // date -> Set(order_id)
+    const revenueByDate = new Map();
+    if (hasSelection) {
+      for (const r of rangeItemRows) {
+        if (r.order_status !== 'paid') continue;
+        if (!selectedProducts.has(r.product_name)) continue;
+        const dateKey = toKstDateKey(r.order_datetime);
+        if (!ordersByDate.has(dateKey)) ordersByDate.set(dateKey, new Set());
+        ordersByDate.get(dateKey).add(r.order_id);
+        revenueByDate.set(dateKey, (revenueByDate.get(dateKey) || 0) + (r.item_paid_amount || 0));
+      }
+    }
+
+    // 광고 데이터 또는 주문 데이터 중 하나라도 있는 날짜만 표시 (둘 다 없는 날짜는 표/차트에서 제외)
+    const dateKeys = new Set([...metaByDate.keys(), ...ordersByDate.keys()]);
+    const days = Array.from(dateKeys).sort().map((date) => {
+      const spend = metaByDate.get(date)?.spend || 0;
+      const clicks = metaByDate.get(date)?.clicks || 0;
+      const orders = ordersByDate.get(date)?.size || 0;
+      const revenue = revenueByDate.get(date) || 0;
+      return {
+        date, spend, clicks, orders, revenue,
+        conversionRate: clicks > 0 ? (orders / clicks) * 100 : null, // NaN/Infinity 방지: 분모 0이면 null
+        cpa: orders > 0 ? spend / orders : null,
+        roas: spend > 0 ? revenue / spend : null, // 배수(예: 3.2 = 320%) — 표시할 때 x 붙임
+      };
+    });
+
+    const totalSpend = days.reduce((s, d) => s + d.spend, 0);
+    const totalClicks = days.reduce((s, d) => s + d.clicks, 0);
+    const totalOrders = days.reduce((s, d) => s + d.orders, 0);
+    const totalRevenue = days.reduce((s, d) => s + d.revenue, 0);
+
+    return {
+      hasSelection,
+      hasData: days.length > 0,
+      totals: {
+        spend: totalSpend,
+        clicks: totalClicks,
+        orders: totalOrders,
+        revenue: totalRevenue,
+        conversionRate: totalClicks > 0 ? (totalOrders / totalClicks) * 100 : null,
+        cpa: totalOrders > 0 ? totalSpend / totalOrders : null,
+        roas: totalSpend > 0 ? totalRevenue / totalSpend : null,
+      },
+      days,
+    };
+  }
+
+  /* ============================================================================
      9. 기간 필터 + 대시보드 데이터 로딩
      ============================================================================ */
   const els2 = {
@@ -1535,6 +1834,42 @@
 
   let sharedSupabaseClient = null;
 
+  // 광고 & 전환 트래킹 탭 상태: Meta 캠페인 데이터는 한 번만 전체 조회해서 캐시하고
+  // (캠페인/상품 체크박스 목록도 그때 한 번만 채움), 이후 필터 적용은 캐시된 데이터로 재계산만 한다.
+  let adsMetaFetchAttempted = false;
+  let adsAllMetaRows = [];
+  let adsFiltersPopulated = false;
+  const adsSelectedCampaigns = new Set();
+  const adsSelectedProducts = new Set();
+  let adsLastRangeItemRows = []; // "적용" 버튼 클릭 시 재조회 없이 캐시된 데이터로만 재계산하기 위한 캐시
+  let adsLastStartDate = '';
+  let adsLastEndDate = '';
+
+  function renderChecklist(containerId, items, selectedSet) {
+    const el = document.getElementById(containerId);
+    if (!el) return;
+    if (items.length === 0) { el.innerHTML = '<div class="checklist-empty">선택 가능한 항목이 없습니다.</div>'; return; }
+    el.innerHTML = items.map((item) => `
+      <label class="checklist-item">
+        <input type="checkbox" value="${escapeHtml(item)}">
+        <span>${escapeHtml(item)}</span>
+      </label>
+    `).join('');
+    el.addEventListener('change', (e) => {
+      if (e.target.type !== 'checkbox') return;
+      if (e.target.checked) selectedSet.add(e.target.value); else selectedSet.delete(e.target.value);
+    });
+  }
+
+  function populateAdsFilters(metaRows, orderItemRows) {
+    if (adsFiltersPopulated) return; // 재조회 시 사용자가 이미 고른 체크 상태를 지우지 않기 위해 최초 1회만 렌더링
+    adsFiltersPopulated = true;
+    const campaignNames = Array.from(new Set(metaRows.map((r) => r.campaign_name).filter(Boolean))).sort();
+    const productNames = Array.from(new Set(orderItemRows.map((r) => r.product_name).filter(Boolean))).sort();
+    renderChecklist('adsCampaignChecklist', campaignNames, adsSelectedCampaigns);
+    renderChecklist('adsProductChecklist', productNames, adsSelectedProducts);
+  }
+
   async function loadDashboardData() {
     if (!sharedSupabaseClient) {
       showGlobalEmptyState('Supabase 연결 안 됨', 'Supabase 라이브러리를 불러오지 못했거나 클라이언트 생성에 실패했습니다.');
@@ -1542,12 +1877,8 @@
     }
     if (els2.filterNote) els2.filterNote.textContent = '불러오는 중...';
 
-    const { data: sessionData } = await sharedSupabaseClient.auth.getSession();
-    if (!sessionData.session) {
-      showLoginRequired();
-      if (els2.filterNote) els2.filterNote.textContent = '';
-      return;
-    }
+    // 대시보드 조회(뷰: v_cafe24_order_items_public)는 로그인 없이도 열람 가능 — 로그인은
+    // "데이터 업로드" 탭(CSV 업로드)에서만 별도로 요구합니다 (initUploadTab의 authGate 참고).
 
     // 1) 전체 이력(allTimeRows)을 먼저 받아온다 — 최초 접속 시 "최근 7일" 기본값을
     //    데이터의 실제 최근 주문일 기준으로 계산하려면 데이터가 먼저 있어야 하기 때문에
@@ -1599,6 +1930,25 @@
       console.warn('[대시보드] 방문자 데이터 조회 실패 (전환율 카드는 빈 상태로 표시됩니다)', err);
       rangeVisitorRows = [];
     }
+
+    // 광고 & 전환 트래킹 탭용 Meta 캠페인 데이터 — 최초 1회만 전체 조회해서 캐시 (Meta 대시보드와 같은 프로젝트의
+    // meta_campaign_performance 테이블. RLS 정책상 접근이 막혀 있을 수 있어 실패해도 대시보드 전체를 막지 않는다).
+    if (!adsMetaFetchAttempted) {
+      adsMetaFetchAttempted = true;
+      try {
+        adsAllMetaRows = await fetchAllMetaCampaignRows(sharedSupabaseClient);
+      } catch (err) {
+        console.warn('[대시보드] Meta 캠페인 데이터 조회 실패 (광고&전환 트래킹 탭은 빈 상태로 표시됩니다)', err);
+        adsAllMetaRows = [];
+      }
+    }
+    populateAdsFilters(adsAllMetaRows, allTimeRows);
+    adsLastRangeItemRows = rangeRows;
+    adsLastStartDate = startDate;
+    adsLastEndDate = endDate;
+    try {
+      renderAdsTab(buildAdsAnalytics(rangeRows, adsAllMetaRows, adsSelectedCampaigns, adsSelectedProducts, startDate, endDate));
+    } catch (e) { console.error('[대시보드] 광고&전환 트래킹 렌더 실패', e); }
 
     const allOrders = toOrders(allTimeRows);
     const rangeOrders = toOrders(rangeRows);
@@ -2183,6 +2533,19 @@
       });
     }
     wirePresetButtons();
+
+    const btnApplyAdsFilter = document.getElementById('btnApplyAdsFilter');
+    btnApplyAdsFilter?.addEventListener('click', () => {
+      const note = document.getElementById('adsFilterNote');
+      if (note) note.textContent = '조회 중...';
+      try {
+        renderAdsTab(buildAdsAnalytics(adsLastRangeItemRows, adsAllMetaRows, adsSelectedCampaigns, adsSelectedProducts, adsLastStartDate, adsLastEndDate));
+        if (note) note.textContent = '';
+      } catch (e) {
+        console.error('[대시보드] 광고&전환 트래킹 재계산 실패', e);
+        if (note) note.textContent = '계산 중 오류가 발생했습니다 (콘솔 확인).';
+      }
+    });
 
     try {
       initUploadTab(sharedSupabaseClient);
