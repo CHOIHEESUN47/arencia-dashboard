@@ -6,6 +6,7 @@
 <title>데일리 예산 히스토리 & 메모</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   html, body { height: 100%; }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -66,16 +67,39 @@
           <span id="configHint" class="text-xs text-slate-400">브라우저 localStorage에 저장됩니다.</span>
         </div>
         <div class="md:col-span-3 border-t border-slate-200 pt-3 mt-1">
-          <label class="block text-xs font-medium text-slate-600 mb-1">운영 세트 불러오기 (localStorage 키)</label>
+          <label class="block text-xs font-medium text-slate-600 mb-1">운영 세트 불러오기 — Supabase(meta_ad_performance) 자동 연동 (메인)</label>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="btnSyncFromSupabase" class="px-3 py-1.5 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 font-medium">🔄 Supabase에서 운영 세트 새로고침</button>
+            <span id="syncStatus" class="text-xs text-slate-400"></span>
+          </div>
+          <p class="text-xs text-slate-400 mt-1.5">
+            기존 메타 대시보드가 raw 리포트를 업로드할 때 저장하는 <code class="bg-slate-100 px-1 rounded">meta_ad_performance</code> 테이블에서
+            가장 최근 날짜의 데이터를 <b>세트ID 기준으로 지출액 합산</b>해 자동으로 불러옵니다. 페이지를 열 때마다 자동 실행되며, 버튼으로 언제든 다시 불러올 수 있어요.
+          </p>
+        </div>
+        <div class="md:col-span-3 border-t border-dashed border-slate-300 pt-3 mt-1">
+          <label class="block text-xs font-medium text-slate-500 mb-1">수동 백업 · 리포트 파일 업로드 (Supabase 테이블이 아직 갱신 안 됐을 때)</label>
+          <div class="flex flex-wrap items-center gap-2">
+            <label class="px-3 py-1.5 text-sm rounded-md border border-slate-300 hover:bg-slate-100 cursor-pointer">
+              📊 리포트 파일 업로드 (.xlsx / .csv)
+              <input id="reportUpload" type="file" accept=".xlsx,.xls,.csv" class="hidden" />
+            </label>
+            <span id="reportFileName" class="text-xs text-slate-400"></span>
+          </div>
+          <p id="loadHint" class="text-xs text-slate-400 mt-1.5">
+            메타 광고관리자에서 내려받은 원본 리포트(raw data)를 직접 업로드하면 같은 방식(세트ID 합산 + 지출액 &gt; 0)으로 처리합니다.
+          </p>
+        </div>
+        <div class="md:col-span-3 border-t border-dashed border-slate-300 pt-3 mt-1">
+          <label class="block text-xs font-medium text-slate-500 mb-1">고급 · localStorage 자동 연동 (추후 대시보드 자동화 대비, 현재는 미사용)</label>
           <div class="flex flex-wrap items-center gap-2">
             <input id="lsKeyInput" type="text" value="metaDashboardData" class="border border-slate-300 rounded-md px-2 py-1.5 text-sm w-64" />
             <button id="btnLoadFromLS" class="px-3 py-1.5 text-sm rounded-md border border-slate-300 hover:bg-slate-100">localStorage에서 불러오기</button>
-            <span class="text-slate-300">|</span>
-            <label class="px-3 py-1.5 text-sm rounded-md border border-dashed border-amber-400 text-amber-600 hover:bg-amber-50 cursor-pointer">
-              📁 JSON 업로드 (비상 버튼)
+            <label class="px-3 py-1.5 text-sm rounded-md border border-dashed border-slate-300 text-slate-500 hover:bg-slate-100 cursor-pointer">
+              📁 JSON 업로드
               <input id="jsonUpload" type="file" accept="application/json" class="hidden" />
             </label>
-            <span id="loadHint" class="text-xs text-slate-400">기존 메타 대시보드가 저장한 localStorage 데이터 또는 JSON 파일에서 [지출액 &gt; 0]인 세트를 불러옵니다.</span>
+            <span class="text-xs text-slate-400">지금은 대시보드가 localStorage에 데이터를 저장하지 않아 보통 사용하지 않습니다.</span>
           </div>
         </div>
       </div>
@@ -216,9 +240,216 @@ function setConnStatus(ok) {
 }
 
 /* ==========================================================================
-   운영 세트 불러오기 (localStorage / JSON 업로드)
+   운영 세트 불러오기 (메타 리포트 파일 업로드 / localStorage / JSON)
    지출액(spend) > 0 인 세트만 추출
    ========================================================================== */
+
+// 캐시: 마지막으로 불러온 운영 세트 목록을 localStorage에 저장해 새로고침해도 유지되게 함
+function cacheOperatingAdsets(adsets) {
+  try {
+    localStorage.setItem('bh_last_adsets', JSON.stringify(adsets));
+    localStorage.setItem('bh_last_adsets_at', new Date().toISOString());
+  } catch (e) { /* 용량 초과 등은 무시 */ }
+}
+function loadCachedOperatingAdsets() {
+  try {
+    const raw = localStorage.getItem('bh_last_adsets');
+    if (!raw) return null;
+    const adsets = JSON.parse(raw);
+    return Array.isArray(adsets) && adsets.length ? adsets : null;
+  } catch (e) { return null; }
+}
+
+/* ==========================================================================
+   Supabase(meta_ad_performance)에서 운영 세트 자동 동기화 — 메인 방식
+   기존 메타 대시보드가 raw 리포트 업로드 시 저장하는 테이블을 그대로 조회해서
+   가장 최근 날짜의 데이터를 세트ID 기준으로 합산, 지출액 > 0인 세트만 사용
+   ========================================================================== */
+async function syncOperatingAdsetsFromSupabase({ silent } = {}) {
+  if (!state.supabase) return false;
+  const statusEl = document.getElementById('syncStatus');
+  if (statusEl) statusEl.textContent = '불러오는 중...';
+
+  try {
+    // 1) 가장 최근 날짜 조회
+    const { data: latestRows, error: latestErr } = await state.supabase
+      .from('meta_ad_performance')
+      .select('date')
+      .order('date', { ascending: false })
+      .limit(1);
+    if (latestErr) throw latestErr;
+    if (!latestRows || !latestRows.length) {
+      if (statusEl) statusEl.textContent = 'meta_ad_performance에 데이터가 없습니다.';
+      if (!silent) toast('meta_ad_performance 테이블에 데이터가 없습니다.', 'warn');
+      return false;
+    }
+    const latestDate = latestRows[0].date;
+
+    // 2) 해당 날짜의 세트별 데이터 조회 (1세트 여러 소재 대응 위해 전체 로우 가져와 클라이언트에서 합산)
+    const { data: rows, error: rowsErr } = await state.supabase
+      .from('meta_ad_performance')
+      .select('campaign_name, adset_id, adset_name, spend')
+      .eq('date', latestDate);
+    if (rowsErr) throw rowsErr;
+
+    const grouped = new Map();
+    for (const r of rows || []) {
+      const adsetId = String(r.adset_id ?? '').trim();
+      if (!adsetId) continue;
+      const spend = Number(r.spend) || 0;
+      if (!grouped.has(adsetId)) {
+        grouped.set(adsetId, { adset_id: adsetId, campaign_name: r.campaign_name || '', adset_name: r.adset_name || '', spend: 0 });
+      }
+      const g = grouped.get(adsetId);
+      g.spend += spend;
+      if (!g.campaign_name && r.campaign_name) g.campaign_name = r.campaign_name;
+      if (!g.adset_name && r.adset_name) g.adset_name = r.adset_name;
+    }
+    const adsets = Array.from(grouped.values()).filter(a => a.spend > 0);
+
+    if (!adsets.length) {
+      if (statusEl) statusEl.textContent = `${latestDate} 기준 지출액 > 0인 세트가 없습니다.`;
+      if (!silent) toast(`${latestDate} 기준 지출액 > 0인 세트를 찾지 못했습니다.`, 'warn');
+      return false;
+    }
+
+    state.operatingAdsets = adsets;
+    cacheOperatingAdsets(adsets);
+    if (statusEl) statusEl.textContent = `${latestDate} 기준 세트 ${adsets.length}개 자동 동기화됨`;
+    document.getElementById('reportFileName').textContent = '';
+    if (!silent) toast(`Supabase에서 ${latestDate} 기준 운영 세트 ${adsets.length}개를 불러왔습니다.`, 'success');
+    loadDateData();
+    return true;
+  } catch (e) {
+    console.error(e);
+    if (statusEl) statusEl.textContent = '동기화 실패: ' + e.message;
+    if (!silent) toast('Supabase 동기화 실패: ' + e.message, 'error');
+    return false;
+  }
+}
+
+// 날짜 셀 값을 'YYYY-MM-DD' 문자열로 정규화 (Date 객체 / 엑셀 시리얼 / 문자열 모두 대응)
+function normalizeDateCell(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (v instanceof Date) {
+    const tz = v.getTimezoneOffset() * 60000;
+    return new Date(v - tz).toISOString().slice(0, 10);
+  }
+  if (typeof v === 'number') {
+    // 엑셀 날짜 시리얼 번호 (1900 날짜 시스템 기준)
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return d.toISOString().slice(0, 10);
+  }
+  const s = String(v).trim();
+  const m = s.match(/(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})/);
+  if (m) return `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`;
+  return s;
+}
+
+// 메타 광고관리자 원본 리포트(raw data) 형태 감지 및 파싱
+// 필요한 컬럼: 광고 세트 ID / 광고 세트 이름 / 캠페인 이름 / 지출 금액 / (선택) 날짜
+// 세트ID 기준으로 지출액을 합산하고(소재가 여러 개인 세트 대응), 가장 최근 날짜 데이터만 사용, spend > 0만 반환
+function parseMetaReportRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const headers = Object.keys(rows[0]);
+
+  const findHeader = (...must) => headers.find(h => must.every(token => h.includes(token)));
+
+  const dateKey = headers.find(h => h === '일') || findHeader('보고', '시작') || findHeader('날짜');
+  const adsetIdKey = findHeader('세트', 'ID');
+  const adsetNameKey = findHeader('세트', '이름');
+  const campaignNameKey = findHeader('캠페인', '이름');
+  const spendKey = findHeader('지출');
+
+  // 필수 컬럼(세트ID, 지출액)이 없으면 메타 리포트 형식이 아닌 것으로 간주
+  if (!adsetIdKey || !spendKey) return null;
+
+  let latestDate = '';
+  if (dateKey) {
+    for (const r of rows) {
+      const d = normalizeDateCell(r[dateKey]);
+      if (d && d > latestDate) latestDate = d;
+    }
+  }
+  const targetRows = (dateKey && latestDate) ? rows.filter(r => normalizeDateCell(r[dateKey]) === latestDate) : rows;
+
+  const grouped = new Map();
+  for (const r of targetRows) {
+    const adsetId = String(r[adsetIdKey] ?? '').trim();
+    if (!adsetId) continue;
+    const spendRaw = r[spendKey];
+    const spend = Number(String(spendRaw ?? 0).replace(/,/g, '')) || 0;
+    const campaignName = campaignNameKey ? String(r[campaignNameKey] ?? '').trim() : '';
+    const adsetName = adsetNameKey ? String(r[adsetNameKey] ?? '').trim() : '';
+
+    if (!grouped.has(adsetId)) {
+      grouped.set(adsetId, { adset_id: adsetId, campaign_name: campaignName, adset_name: adsetName, spend: 0 });
+    }
+    const g = grouped.get(adsetId);
+    g.spend += spend;
+    // 캠페인/세트명이 비어있던 경우 이후 행에서 채워넣기
+    if (!g.campaign_name && campaignName) g.campaign_name = campaignName;
+    if (!g.adset_name && adsetName) g.adset_name = adsetName;
+  }
+
+  return {
+    date: latestDate,
+    adsets: Array.from(grouped.values()).filter(a => a.spend > 0),
+  };
+}
+
+function handleReportUpload(file) {
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  const finish = (rows) => {
+    const result = parseMetaReportRows(rows);
+    if (!result) {
+      toast('리포트에서 "광고 세트 ID / 지출 금액" 컬럼을 찾지 못했습니다. 파일 형식을 확인해주세요.', 'error');
+      return;
+    }
+    if (!result.adsets.length) {
+      toast('지출액 > 0인 세트를 찾지 못했습니다.', 'warn');
+      return;
+    }
+    state.operatingAdsets = result.adsets;
+    cacheOperatingAdsets(result.adsets);
+    document.getElementById('reportFileName').textContent = `${file.name}${result.date ? ` (${result.date} 기준)` : ''}`;
+    toast(`${result.date ? result.date + ' 기준 ' : ''}운영 세트 ${result.adsets.length}개를 불러왔습니다.`, 'success');
+    document.getElementById('settingsPanel').classList.add('hidden');
+    loadDateData();
+  };
+
+  const reader = new FileReader();
+  reader.onerror = () => toast('파일을 읽는 중 오류가 발생했습니다.', 'error');
+
+  if (ext === 'csv') {
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'string' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        finish(rows);
+      } catch (err) {
+        console.error(err);
+        toast('CSV 파싱에 실패했습니다.', 'error');
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  } else {
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        finish(rows);
+      } catch (err) {
+        console.error(err);
+        toast('엑셀 파일 파싱에 실패했습니다.', 'error');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
 function normalizeAdsetList(raw) {
   let list = raw;
   if (!Array.isArray(list)) {
@@ -634,7 +865,7 @@ document.getElementById('btnSaveConfig').addEventListener('click', () => {
   const ok = initSupabase();
   if (ok) {
     toast('Supabase에 연결되었습니다.', 'success');
-    loadDateData();
+    syncOperatingAdsetsFromSupabase().then(success => { if (!success) loadDateData(); });
   }
 });
 
@@ -646,6 +877,14 @@ document.getElementById('btnClearConfig').addEventListener('click', () => {
   state.supabase = null;
   setConnStatus(false);
   toast('설정이 초기화되었습니다.', 'info');
+});
+
+document.getElementById('btnSyncFromSupabase').addEventListener('click', () => syncOperatingAdsetsFromSupabase());
+
+document.getElementById('reportUpload').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) handleReportUpload(file);
+  e.target.value = '';
 });
 
 document.getElementById('btnLoadFromLS').addEventListener('click', loadFromLocalStorage);
@@ -697,17 +936,19 @@ document.getElementById('btnBulkSave').addEventListener('click', bulkSaveDirty);
   updateModeBadge();
   renderTable();
 
+  // 이전에 업로드했던 운영 세트 목록이 캐시되어 있으면 새로고침 후에도 유지
+  const cached = loadCachedOperatingAdsets();
+  if (cached) {
+    state.operatingAdsets = cached;
+    const cachedAt = localStorage.getItem('bh_last_adsets_at');
+    document.getElementById('reportFileName').textContent = `마지막 업로드 세트 ${cached.length}개 사용 중${cachedAt ? ` (${cachedAt.slice(0, 16).replace('T', ' ')})` : ''}`;
+  }
+
   if (connected) {
-    // 자동으로 localStorage 기본 키 시도 (실패해도 조용히 무시)
-    const key = savedLsKey || 'metaDashboardData';
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      try {
-        const adsets = normalizeAdsetList(JSON.parse(raw));
-        if (adsets.length) state.operatingAdsets = adsets;
-      } catch (e) { /* ignore */ }
-    }
-    loadDateData();
+    // Supabase(meta_ad_performance)에서 자동 동기화 시도, 실패 시 캐시된 목록으로 대체
+    syncOperatingAdsetsFromSupabase({ silent: true }).then(success => {
+      if (!success) loadDateData();
+    });
   }
 })();
 </script>
