@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>데일리 예산 히스토리 & 메모</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  html, body { height: 100%; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  .row-dirty { background-color: #fffbeb !important; }
+  .row-saved-today { box-shadow: inset 3px 0 0 0 #22c55e; }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button { opacity: 1; }
+  .toast { animation: toast-in .18s ease-out, toast-out .3s ease-in 2.2s forwards; }
+  @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes toast-out { to { transform: translateY(-8px); opacity: 0; } }
+</style>
+</head>
+<body class="bg-slate-100 text-slate-800 text-sm">
+
+<div id="app" class="min-h-screen flex flex-col">
+
+  <!-- ===================== Header ===================== -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-[1500px] mx-auto px-4 py-3 flex flex-wrap items-center gap-3">
+      <div class="flex items-center gap-2 mr-2">
+        <div class="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold">B</div>
+        <div>
+          <h1 class="font-bold text-slate-900 leading-none">데일리 예산 히스토리</h1>
+          <p class="text-[11px] text-slate-400 leading-none mt-1">세트별 예산 조정 &amp; 메모 관리</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <label class="text-xs text-slate-500">기준 날짜</label>
+        <input id="datePicker" type="date" class="border border-slate-300 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+        <button id="btnToday" class="text-xs px-2 py-1.5 rounded-md border border-slate-300 hover:bg-slate-50">오늘</button>
+      </div>
+
+      <span id="modeBadge" class="text-xs font-medium px-2 py-1 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200">오늘 (편집 가능)</span>
+
+      <div class="flex-1"></div>
+
+      <div id="connStatus" class="text-xs px-2 py-1 rounded-full border border-slate-300 text-slate-400 bg-slate-50">Supabase 미연결</div>
+      <button id="btnSettings" class="text-xs px-3 py-1.5 rounded-md border border-slate-300 hover:bg-slate-50">⚙ 설정</button>
+    </div>
+
+    <!-- Settings panel -->
+    <div id="settingsPanel" class="hidden border-t border-slate-200 bg-slate-50">
+      <div class="max-w-[1500px] mx-auto px-4 py-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Supabase URL</label>
+          <input id="sbUrl" type="text" placeholder="https://xxxx.supabase.co" class="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-600 mb-1">Supabase Anon Key</label>
+          <input id="sbKey" type="password" placeholder="eyJhbGciOi..." class="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm" />
+        </div>
+        <div class="flex items-end gap-2">
+          <button id="btnSaveConfig" class="px-3 py-1.5 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700">저장 &amp; 연결</button>
+          <button id="btnClearConfig" class="px-3 py-1.5 text-sm rounded-md border border-slate-300 hover:bg-slate-100">초기화</button>
+          <span id="configHint" class="text-xs text-slate-400">브라우저 localStorage에 저장됩니다.</span>
+        </div>
+        <div class="md:col-span-3 border-t border-slate-200 pt-3 mt-1">
+          <label class="block text-xs font-medium text-slate-600 mb-1">운영 세트 불러오기 (localStorage 키)</label>
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="lsKeyInput" type="text" value="metaDashboardData" class="border border-slate-300 rounded-md px-2 py-1.5 text-sm w-64" />
+            <button id="btnLoadFromLS" class="px-3 py-1.5 text-sm rounded-md border border-slate-300 hover:bg-slate-100">localStorage에서 불러오기</button>
+            <span class="text-slate-300">|</span>
+            <label class="px-3 py-1.5 text-sm rounded-md border border-dashed border-amber-400 text-amber-600 hover:bg-amber-50 cursor-pointer">
+              📁 JSON 업로드 (비상 버튼)
+              <input id="jsonUpload" type="file" accept="application/json" class="hidden" />
+            </label>
+            <span id="loadHint" class="text-xs text-slate-400">기존 메타 대시보드가 저장한 localStorage 데이터 또는 JSON 파일에서 [지출액 &gt; 0]인 세트를 불러옵니다.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===================== Toolbar ===================== -->
+  <div class="max-w-[1500px] w-full mx-auto px-4 pt-4">
+    <div class="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center gap-2">
+      <div class="relative">
+        <input id="searchInput" type="text" placeholder="캠페인명 / 세트명 검색..." class="border border-slate-300 rounded-md pl-8 pr-3 py-1.5 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+      </div>
+
+      <button id="btnFilterChanged" class="text-xs px-3 py-1.5 rounded-md border border-slate-300 hover:bg-slate-50 data-[on=true]:bg-indigo-600 data-[on=true]:text-white data-[on=true]:border-indigo-600" data-on="false">
+        오늘 변경한 세트만 보기
+      </button>
+
+      <span class="text-xs text-slate-400">|</span>
+      <span id="statsBar" class="text-xs text-slate-500">세트 0개 · 지출 0원 · 수정 대기 0건</span>
+
+      <div class="flex-1"></div>
+
+      <button id="btnRefresh" class="text-xs px-3 py-1.5 rounded-md border border-slate-300 hover:bg-slate-50">↻ 새로고침</button>
+      <button id="btnBulkSave" class="text-sm px-4 py-1.5 rounded-md bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+        💾 오늘 변경사항 일괄 저장 <span id="bulkCount" class="ml-1 text-emerald-100"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ===================== Table ===================== -->
+  <div class="max-w-[1500px] w-full mx-auto px-4 py-4 flex-1 min-h-0">
+    <div id="tableWrap" class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col" style="height: calc(100vh - 230px);">
+      <div class="overflow-auto flex-1">
+        <table class="min-w-full border-collapse text-sm">
+          <thead class="sticky top-0 z-20">
+            <tr class="bg-slate-800 text-white text-xs">
+              <th class="px-3 py-2 text-left font-medium sticky left-0 bg-slate-800 z-10 min-w-[180px]">캠페인</th>
+              <th class="px-3 py-2 text-left font-medium min-w-[200px]">세트명</th>
+              <th class="px-3 py-2 text-right font-medium min-w-[100px]">전일 지출</th>
+              <th class="px-3 py-2 text-right font-medium min-w-[110px]">시작 예산</th>
+              <th class="px-3 py-2 text-right font-medium min-w-[130px]">조정 예산</th>
+              <th class="px-3 py-2 text-left font-medium min-w-[220px]">메모</th>
+              <th class="px-3 py-2 text-center font-medium min-w-[90px]">상태</th>
+              <th class="px-3 py-2 text-center font-medium min-w-[70px]">저장</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+      <div id="emptyState" class="hidden flex-1 flex flex-col items-center justify-center text-slate-400 gap-2 py-16">
+        <div class="text-3xl">📭</div>
+        <p class="text-sm">표시할 데이터가 없습니다.</p>
+        <p class="text-xs">우측 상단 ⚙ 설정에서 운영 세트를 불러오거나, Supabase 연결 상태를 확인하세요.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toastArea" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 items-end"></div>
+
+<script>
+/* ==========================================================================
+   상태 (State)
+   ========================================================================== */
+const state = {
+  supabase: null,
+  selectedDate: todayStr(),
+  isTodayMode: true,
+  operatingAdsets: [],     // [{campaign_name, adset_id, adset_name, spend}]
+  rows: new Map(),         // adset_id -> row data (today mode)
+  historyRows: [],         // rows for a past date (history mode)
+  searchTerm: '',
+  filterChangedOnly: false,
+};
+
+function todayStr(offsetDays = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const tz = d.getTimezoneOffset() * 60000;
+  return new Date(d - tz).toISOString().slice(0, 10);
+}
+function yesterdayOf(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() - 1);
+  const tz = d.getTimezoneOffset() * 60000;
+  return new Date(d - tz).toISOString().slice(0, 10);
+}
+function fmtNum(n) {
+  if (n === null || n === undefined || n === '') return '-';
+  return Number(n).toLocaleString('ko-KR');
+}
+function toast(msg, type = 'info') {
+  const el = document.createElement('div');
+  const colors = {
+    info: 'bg-slate-800',
+    success: 'bg-emerald-600',
+    error: 'bg-rose-600',
+    warn: 'bg-amber-500',
+  };
+  el.className = `toast text-white text-xs px-3 py-2 rounded-md shadow-lg ${colors[type] || colors.info}`;
+  el.textContent = msg;
+  document.getElementById('toastArea').appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+}
+
+/* ==========================================================================
+   Supabase 연결 관리
+   ========================================================================== */
+function initSupabase() {
+  const url = localStorage.getItem('bh_sb_url') || '';
+  const key = localStorage.getItem('bh_sb_key') || '';
+  document.getElementById('sbUrl').value = url;
+  document.getElementById('sbKey').value = key;
+  if (url && key) {
+    try {
+      state.supabase = supabase.createClient(url, key);
+      setConnStatus(true);
+      return true;
+    } catch (e) {
+      console.error(e);
+      setConnStatus(false);
+      return false;
+    }
+  }
+  setConnStatus(false);
+  return false;
+}
+function setConnStatus(ok) {
+  const el = document.getElementById('connStatus');
+  if (ok) {
+    el.textContent = '● Supabase 연결됨';
+    el.className = 'text-xs px-2 py-1 rounded-full border border-emerald-300 text-emerald-600 bg-emerald-50';
+  } else {
+    el.textContent = 'Supabase 미연결';
+    el.className = 'text-xs px-2 py-1 rounded-full border border-slate-300 text-slate-400 bg-slate-50';
+  }
+}
+
+/* ==========================================================================
+   운영 세트 불러오기 (localStorage / JSON 업로드)
+   지출액(spend) > 0 인 세트만 추출
+   ========================================================================== */
+function normalizeAdsetList(raw) {
+  let list = raw;
+  if (!Array.isArray(list)) {
+    // 흔한 wrapper 키 탐색
+    for (const k of ['adsets', 'data', 'items', 'rows', 'list']) {
+      if (raw && Array.isArray(raw[k])) { list = raw[k]; break; }
+    }
+  }
+  if (!Array.isArray(list)) return [];
+
+  const pick = (obj, keys) => {
+    for (const k of keys) {
+      if (obj[k] !== undefined && obj[k] !== null && obj[k] !== '') return obj[k];
+    }
+    return undefined;
+  };
+
+  const normalized = list.map(item => {
+    const campaign_name = pick(item, ['campaign_name', 'campaignName', 'campaign']) ?? '';
+    const adset_id = String(pick(item, ['adset_id', 'adsetId', 'id', 'ad_set_id']) ?? '');
+    const adset_name = pick(item, ['adset_name', 'adsetName', 'name']) ?? '';
+    const rawSpend = pick(item, ['spend', 'spend_krw', 'amount_spent', 'spendAmount', 'cost']) ?? 0;
+    const spend = Number(String(rawSpend).replace(/,/g, '')) || 0;
+    return { campaign_name, adset_id, adset_name, spend };
+  }).filter(a => a.adset_id);
+
+  // spend > 0 인 세트만 (요구사항)
+  return normalized.filter(a => a.spend > 0);
+}
+
+function loadFromLocalStorage() {
+  const key = document.getElementById('lsKeyInput').value.trim() || 'metaDashboardData';
+  localStorage.setItem('bh_ls_key', key);
+  const raw = localStorage.getItem(key);
+  if (!raw) {
+    toast(`localStorage에 "${key}" 키가 없습니다. JSON 업로드를 이용해주세요.`, 'warn');
+    return;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const adsets = normalizeAdsetList(parsed);
+    if (!adsets.length) {
+      toast('지출액 > 0인 세트를 찾지 못했습니다. 데이터 구조를 확인해주세요.', 'warn');
+      return;
+    }
+    state.operatingAdsets = adsets;
+    toast(`운영 세트 ${adsets.length}개를 불러왔습니다.`, 'success');
+    document.getElementById('settingsPanel').classList.add('hidden');
+    loadDateData();
+  } catch (e) {
+    console.error(e);
+    toast('localStorage 데이터 파싱에 실패했습니다.', 'error');
+  }
+}
+
+function handleJsonUpload(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      const adsets = normalizeAdsetList(parsed);
+      if (!adsets.length) {
+        toast('업로드한 JSON에서 지출액 > 0인 세트를 찾지 못했습니다.', 'warn');
+        return;
+      }
+      state.operatingAdsets = adsets;
+      toast(`JSON에서 운영 세트 ${adsets.length}개를 불러왔습니다.`, 'success');
+      document.getElementById('settingsPanel').classList.add('hidden');
+      loadDateData();
+    } catch (err) {
+      console.error(err);
+      toast('JSON 파일을 읽을 수 없습니다.', 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ==========================================================================
+   데이터 로드 - 오늘(편집) / 과거(히스토리 조회)
+   ========================================================================== */
+async function loadDateData() {
+  if (!state.supabase) {
+    toast('먼저 Supabase 설정을 입력해주세요.', 'warn');
+    renderTable();
+    return;
+  }
+
+  state.isTodayMode = state.selectedDate === todayStr();
+  updateModeBadge();
+
+  if (state.isTodayMode) {
+    await loadTodayEditableData();
+  } else {
+    await loadHistoryData(state.selectedDate);
+  }
+  renderTable();
+  updateStatsBar();
+}
+
+async function loadTodayEditableData() {
+  if (!state.operatingAdsets.length) {
+    state.rows = new Map();
+    return;
+  }
+  const today = state.selectedDate;
+  const yesterday = yesterdayOf(today);
+  const adsetIds = state.operatingAdsets.map(a => a.adset_id);
+
+  let todayExisting = [];
+  let yestExisting = [];
+  try {
+    const [todayRes, yestRes] = await Promise.all([
+      state.supabase.from('daily_budgets').select('*').eq('date', today).in('adset_id', adsetIds),
+      state.supabase.from('daily_budgets').select('*').eq('date', yesterday).in('adset_id', adsetIds),
+    ]);
+    if (todayRes.error) throw todayRes.error;
+    if (yestRes.error) throw yestRes.error;
+    todayExisting = todayRes.data || [];
+    yestExisting = yestRes.data || [];
+  } catch (e) {
+    console.error(e);
+    toast('Supabase 조회 중 오류가 발생했습니다: ' + e.message, 'error');
+  }
+
+  const todayMap = new Map(todayExisting.map(r => [r.adset_id, r]));
+  const yestMap = new Map(yestExisting.map(r => [r.adset_id, r]));
+
+  const rows = new Map();
+  for (const a of state.operatingAdsets) {
+    const existing = todayMap.get(a.adset_id);
+    if (existing) {
+      rows.set(a.adset_id, {
+        campaign_name: existing.campaign_name || a.campaign_name,
+        adset_id: a.adset_id,
+        adset_name: existing.adset_name || a.adset_name,
+        spend: a.spend,
+        initial_budget: existing.initial_budget ?? 0,
+        adjusted_budget: existing.adjusted_budget,
+        memo: existing.memo || '',
+        savedToday: true,
+        dirty: false,
+      });
+    } else {
+      const y = yestMap.get(a.adset_id);
+      const carriedInitial = y ? (y.adjusted_budget ?? y.initial_budget ?? 0) : 0;
+      rows.set(a.adset_id, {
+        campaign_name: a.campaign_name,
+        adset_id: a.adset_id,
+        adset_name: a.adset_name,
+        spend: a.spend,
+        initial_budget: carriedInitial,
+        adjusted_budget: null,
+        memo: '',
+        savedToday: false,
+        dirty: false,
+      });
+    }
+  }
+  state.rows = rows;
+}
+
+async function loadHistoryData(dateStr) {
+  try {
+    const { data, error } = await state.supabase
+      .from('daily_budgets')
+      .select('*')
+      .eq('date', dateStr)
+      .order('campaign_name', { ascending: true });
+    if (error) throw error;
+    state.historyRows = data || [];
+    if (!state.historyRows.length) {
+      toast(`${dateStr} 기록이 없습니다.`, 'info');
+    }
+  } catch (e) {
+    console.error(e);
+    toast('히스토리 조회 중 오류: ' + e.message, 'error');
+    state.historyRows = [];
+  }
+}
+
+/* ==========================================================================
+   렌더링
+   ========================================================================== */
+function updateModeBadge() {
+  const badge = document.getElementById('modeBadge');
+  if (state.isTodayMode) {
+    badge.textContent = '오늘 (편집 가능)';
+    badge.className = 'text-xs font-medium px-2 py-1 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200';
+    document.getElementById('btnBulkSave').classList.remove('hidden');
+  } else {
+    badge.textContent = `${state.selectedDate} 히스토리 (조회 전용)`;
+    badge.className = 'text-xs font-medium px-2 py-1 rounded-full bg-slate-100 text-slate-500 border border-slate-300';
+    document.getElementById('btnBulkSave').classList.add('hidden');
+  }
+}
+
+function getFilteredRows() {
+  const term = state.searchTerm.trim().toLowerCase();
+  if (state.isTodayMode) {
+    let arr = Array.from(state.rows.values());
+    if (term) {
+      arr = arr.filter(r => (r.campaign_name || '').toLowerCase().includes(term) || (r.adset_name || '').toLowerCase().includes(term) || (r.adset_id || '').toLowerCase().includes(term));
+    }
+    if (state.filterChangedOnly) {
+      arr = arr.filter(r => r.dirty || r.savedToday);
+    }
+    return arr;
+  } else {
+    let arr = state.historyRows.slice();
+    if (term) {
+      arr = arr.filter(r => (r.campaign_name || '').toLowerCase().includes(term) || (r.adset_name || '').toLowerCase().includes(term) || (r.adset_id || '').toLowerCase().includes(term));
+    }
+    return arr;
+  }
+}
+
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  const rows = getFilteredRows();
+  const emptyState = document.getElementById('emptyState');
+
+  if (!rows.length) {
+    tbody.innerHTML = '';
+    emptyState.classList.remove('hidden');
+  } else {
+    emptyState.classList.add('hidden');
+  }
+
+  if (state.isTodayMode) {
+    tbody.innerHTML = rows.map(r => rowHtmlEditable(r)).join('');
+  } else {
+    tbody.innerHTML = rows.map(r => rowHtmlHistory(r)).join('');
+  }
+  updateStatsBar();
+  updateBulkSaveButton();
+}
+
+function rowHtmlEditable(r) {
+  const dirtyCls = r.dirty ? 'row-dirty' : '';
+  const savedCls = r.savedToday && !r.dirty ? 'row-saved-today' : '';
+  const statusHtml = r.dirty
+    ? `<span class="text-amber-600 text-xs font-medium">● 미저장</span>`
+    : (r.savedToday
+        ? `<span class="text-emerald-600 text-xs font-medium">✓ 저장됨</span>`
+        : `<span class="text-slate-300 text-xs">-</span>`);
+
+  return `
+  <tr data-adset-id="${escAttr(r.adset_id)}" class="${dirtyCls} ${savedCls} hover:bg-slate-50 transition-colors">
+    <td class="px-3 py-1.5 sticky left-0 bg-white ${r.dirty ? 'row-dirty' : ''} z-[1] max-w-[200px] truncate" title="${escAttr(r.campaign_name)}">${esc(r.campaign_name) || '<span class="text-slate-300">-</span>'}</td>
+    <td class="px-3 py-1.5 max-w-[220px] truncate" title="${escAttr(r.adset_name)}">${esc(r.adset_name) || '<span class="text-slate-300">-</span>'}</td>
+    <td class="px-3 py-1.5 text-right font-mono text-slate-600">${fmtNum(r.spend)}</td>
+    <td class="px-3 py-1.5 text-right font-mono text-slate-500">${fmtNum(r.initial_budget)}</td>
+    <td class="px-3 py-1.5 text-right">
+      <input type="number" inputmode="numeric" data-field="adjusted_budget"
+        class="adj-input w-28 text-right border border-slate-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        placeholder="${fmtNum(r.initial_budget)}"
+        value="${r.adjusted_budget !== null && r.adjusted_budget !== undefined ? r.adjusted_budget : ''}" />
+    </td>
+    <td class="px-3 py-1.5">
+      <input type="text" data-field="memo"
+        class="memo-input w-full border border-slate-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        placeholder="메모 입력..."
+        value="${escAttr(r.memo || '')}" />
+    </td>
+    <td class="px-3 py-1.5 text-center">${statusHtml}</td>
+    <td class="px-3 py-1.5 text-center">
+      <button data-action="save-row" class="save-row-btn text-xs px-2 py-1 rounded-md border border-slate-300 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed" ${r.dirty ? '' : 'disabled'}>저장</button>
+    </td>
+  </tr>`;
+}
+
+function rowHtmlHistory(r) {
+  return `
+  <tr class="hover:bg-slate-50">
+    <td class="px-3 py-1.5 sticky left-0 bg-white z-[1] max-w-[200px] truncate" title="${escAttr(r.campaign_name)}">${esc(r.campaign_name) || '-'}</td>
+    <td class="px-3 py-1.5 max-w-[220px] truncate" title="${escAttr(r.adset_name)}">${esc(r.adset_name) || '-'}</td>
+    <td class="px-3 py-1.5 text-right font-mono text-slate-600">${fmtNum(r.spend)}</td>
+    <td class="px-3 py-1.5 text-right font-mono text-slate-500">${fmtNum(r.initial_budget)}</td>
+    <td class="px-3 py-1.5 text-right font-mono font-medium text-slate-800">${fmtNum(r.adjusted_budget)}</td>
+    <td class="px-3 py-1.5 text-slate-600">${esc(r.memo) || '<span class="text-slate-300">-</span>'}</td>
+    <td class="px-3 py-1.5 text-center text-slate-300 text-xs">조회전용</td>
+    <td class="px-3 py-1.5 text-center text-slate-300 text-xs">-</td>
+  </tr>`;
+}
+
+function esc(str) {
+  if (str === null || str === undefined) return '';
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escAttr(str) { return esc(str); }
+
+function updateStatsBar() {
+  const el = document.getElementById('statsBar');
+  if (state.isTodayMode) {
+    const arr = Array.from(state.rows.values());
+    const totalSpend = arr.reduce((s, r) => s + (Number(r.spend) || 0), 0);
+    const dirtyCount = arr.filter(r => r.dirty).length;
+    el.textContent = `세트 ${arr.length}개 · 전일 지출 합계 ${fmtNum(totalSpend)}원 · 수정 대기 ${dirtyCount}건`;
+  } else {
+    const totalSpend = state.historyRows.reduce((s, r) => s + (Number(r.spend) || 0), 0);
+    el.textContent = `${state.selectedDate} 기록 ${state.historyRows.length}건 · 지출 합계 ${fmtNum(totalSpend)}원`;
+  }
+}
+
+function updateBulkSaveButton() {
+  const btn = document.getElementById('btnBulkSave');
+  const countEl = document.getElementById('bulkCount');
+  if (!state.isTodayMode) { btn.disabled = true; countEl.textContent = ''; return; }
+  const dirtyCount = Array.from(state.rows.values()).filter(r => r.dirty).length;
+  btn.disabled = dirtyCount === 0;
+  countEl.textContent = dirtyCount ? `(${dirtyCount})` : '';
+}
+
+/* ==========================================================================
+   편집 이벤트 (input change -> dirty 표시)
+   ========================================================================== */
+document.getElementById('tableBody').addEventListener('input', (e) => {
+  const field = e.target.dataset.field;
+  if (!field) return;
+  const tr = e.target.closest('tr');
+  const adsetId = tr.dataset.adsetId;
+  const row = state.rows.get(adsetId);
+  if (!row) return;
+
+  if (field === 'adjusted_budget') {
+    const v = e.target.value;
+    row.adjusted_budget = v === '' ? null : Number(v);
+  } else if (field === 'memo') {
+    row.memo = e.target.value;
+  }
+  row.dirty = true;
+  tr.classList.add('row-dirty');
+  const saveBtn = tr.querySelector('.save-row-btn');
+  if (saveBtn) saveBtn.disabled = false;
+  const statusCell = tr.children[6];
+  statusCell.innerHTML = `<span class="text-amber-600 text-xs font-medium">● 미저장</span>`;
+  updateStatsBar();
+  updateBulkSaveButton();
+});
+
+document.getElementById('tableBody').addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-action="save-row"]');
+  if (!btn) return;
+  const tr = btn.closest('tr');
+  const adsetId = tr.dataset.adsetId;
+  await saveRow(adsetId);
+});
+
+/* ==========================================================================
+   저장 (Upsert)
+   ========================================================================== */
+function buildUpsertPayload(row) {
+  return {
+    date: state.selectedDate,
+    campaign_name: row.campaign_name || '',
+    adset_id: row.adset_id,
+    adset_name: row.adset_name || '',
+    spend: Number(row.spend) || 0,
+    initial_budget: Number(row.initial_budget) || 0,
+    adjusted_budget: row.adjusted_budget === null || row.adjusted_budget === undefined || row.adjusted_budget === '' ? null : Number(row.adjusted_budget),
+    memo: row.memo || '',
+  };
+}
+
+async function saveRow(adsetId) {
+  if (!state.supabase) { toast('Supabase가 연결되어 있지 않습니다.', 'error'); return; }
+  const row = state.rows.get(adsetId);
+  if (!row) return;
+  try {
+    const payload = buildUpsertPayload(row);
+    const { error } = await state.supabase.from('daily_budgets').upsert(payload, { onConflict: 'date,adset_id' });
+    if (error) throw error;
+    row.dirty = false;
+    row.savedToday = true;
+    toast(`${row.adset_name || row.adset_id} 저장 완료`, 'success');
+    renderTable();
+  } catch (e) {
+    console.error(e);
+    toast('저장 실패: ' + e.message, 'error');
+  }
+}
+
+async function bulkSaveDirty() {
+  if (!state.supabase) { toast('Supabase가 연결되어 있지 않습니다.', 'error'); return; }
+  const dirtyRows = Array.from(state.rows.values()).filter(r => r.dirty);
+  if (!dirtyRows.length) return;
+  const payloads = dirtyRows.map(buildUpsertPayload);
+  try {
+    const { error } = await state.supabase.from('daily_budgets').upsert(payloads, { onConflict: 'date,adset_id' });
+    if (error) throw error;
+    dirtyRows.forEach(r => { r.dirty = false; r.savedToday = true; });
+    toast(`${dirtyRows.length}건 일괄 저장 완료`, 'success');
+    renderTable();
+  } catch (e) {
+    console.error(e);
+    toast('일괄 저장 실패: ' + e.message, 'error');
+  }
+}
+
+/* ==========================================================================
+   이벤트 바인딩
+   ========================================================================== */
+document.getElementById('btnSettings').addEventListener('click', () => {
+  document.getElementById('settingsPanel').classList.toggle('hidden');
+});
+
+document.getElementById('btnSaveConfig').addEventListener('click', () => {
+  const url = document.getElementById('sbUrl').value.trim();
+  const key = document.getElementById('sbKey').value.trim();
+  if (!url || !key) { toast('URL과 Key를 모두 입력해주세요.', 'warn'); return; }
+  localStorage.setItem('bh_sb_url', url);
+  localStorage.setItem('bh_sb_key', key);
+  const ok = initSupabase();
+  if (ok) {
+    toast('Supabase에 연결되었습니다.', 'success');
+    loadDateData();
+  }
+});
+
+document.getElementById('btnClearConfig').addEventListener('click', () => {
+  localStorage.removeItem('bh_sb_url');
+  localStorage.removeItem('bh_sb_key');
+  document.getElementById('sbUrl').value = '';
+  document.getElementById('sbKey').value = '';
+  state.supabase = null;
+  setConnStatus(false);
+  toast('설정이 초기화되었습니다.', 'info');
+});
+
+document.getElementById('btnLoadFromLS').addEventListener('click', loadFromLocalStorage);
+
+document.getElementById('jsonUpload').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) handleJsonUpload(file);
+  e.target.value = '';
+});
+
+document.getElementById('datePicker').addEventListener('change', (e) => {
+  state.selectedDate = e.target.value;
+  loadDateData();
+});
+
+document.getElementById('btnToday').addEventListener('click', () => {
+  state.selectedDate = todayStr();
+  document.getElementById('datePicker').value = state.selectedDate;
+  loadDateData();
+});
+
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  state.searchTerm = e.target.value;
+  renderTable();
+});
+
+document.getElementById('btnFilterChanged').addEventListener('click', (e) => {
+  state.filterChangedOnly = !state.filterChangedOnly;
+  e.target.dataset.on = state.filterChangedOnly ? 'true' : 'false';
+  renderTable();
+});
+
+document.getElementById('btnRefresh').addEventListener('click', () => loadDateData());
+document.getElementById('btnBulkSave').addEventListener('click', bulkSaveDirty);
+
+/* ==========================================================================
+   초기화
+   ========================================================================== */
+(function boot() {
+  document.getElementById('datePicker').value = state.selectedDate;
+  const savedLsKey = localStorage.getItem('bh_ls_key');
+  if (savedLsKey) document.getElementById('lsKeyInput').value = savedLsKey;
+
+  const connected = initSupabase();
+  if (!connected) {
+    document.getElementById('settingsPanel').classList.remove('hidden');
+    toast('Supabase URL / Key를 입력하고 연결해주세요.', 'info');
+  }
+  updateModeBadge();
+  renderTable();
+
+  if (connected) {
+    // 자동으로 localStorage 기본 키 시도 (실패해도 조용히 무시)
+    const key = savedLsKey || 'metaDashboardData';
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      try {
+        const adsets = normalizeAdsetList(JSON.parse(raw));
+        if (adsets.length) state.operatingAdsets = adsets;
+      } catch (e) { /* ignore */ }
+    }
+    loadDateData();
+  }
+})();
+</script>
+</body>
+</html>
