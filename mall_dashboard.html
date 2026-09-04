@@ -4,9 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>자사몰 데이터 분석 대시보드</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;900&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
 <!-- 메타 광고 대시보드와 동일한 CDN(jsdelivr)으로 통일 — cdnjs가 일부 네트워크/광고차단 환경에서
      차단되어 "Chart.js를 불러오지 못했습니다"가 발생하는 경우가 있어, 이미 정상 동작 중인
      메타 대시보드와 같은 소스로 맞췄습니다. -->
@@ -68,7 +66,7 @@
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--page); color: var(--text-primary);
-    font-family: "Noto Sans KR", system-ui, -apple-system, sans-serif; /* 메타 대시보드와 동일 폰트 */
+    font-family: "Pretendard", system-ui, -apple-system, sans-serif; /* 메타 대시보드와 동일 폰트 */
     font-size: 14px; -webkit-font-smoothing: antialiased;
   }
   header {
@@ -283,6 +281,7 @@
     <span class="site-nav-brand">Arencia Dashboard</span>
     <a class="site-nav-link" href="/index.html">메타 광고 대시보드</a>
     <a class="site-nav-link active" href="/mall_dashboard.html">자사몰 데이터 분석 대시보드</a>
+    <a class="site-nav-link" href="/meta-budget.html">광고 예산 모니터링</a>
   </div>
 </div>
 
