@@ -866,10 +866,28 @@ function currentCreativeTableRows(start, end) {
   return adTotalsForRange(start, end);
 }
 
-function applyCreativeSearch(rows) {
+// 이름/ID가 현재 소재 검색어를 포함하는지 검사하는 공통 헬퍼. q는 이미 trim + toLowerCase 된 값.
+function creativeRowMatchesQuery(r, q) {
+  return (String(r.name) + " " + String(r.id)).toLowerCase().includes(q);
+}
+
+// 소재명/소재ID 검색 — "전체" 모드에서는 rows가 이미 개별 소재 단위라 이름/ID로 바로 매칭하면 됩니다.
+// "묶어보기"(목적별/제품별/캠페인별) 모드에서는 rows가 그룹(캠페인/목적/제품) 단위 집계라
+// 그룹 자체의 라벨/키만 비교하면 그룹 안에 있는 개별 소재명으로는 검색이 안 되는 문제가 있었습니다.
+// 그래서 그룹 자체가 검색어와 일치하지 않아도, 그 그룹에 속한 개별 소재(소재명/소재ID) 중
+// 하나라도 검색어를 포함하면 해당 그룹을 결과에 포함시킵니다. (하위 소재를 펼쳤을 때 검색어와
+// 무관한 소재까지 함께 보이지 않도록, 실제 펼침 목록은 renderCreativeTable에서 검색어로 다시 한 번 걸러집니다.)
+function applyCreativeSearch(rows, start, end) {
   const q = creativeSearchQuery.trim().toLowerCase();
   if (!q) return rows;
-  return rows.filter(r => (String(r.name) + " " + String(r.id)).toLowerCase().includes(q));
+  if (creativeViewMode === "all") {
+    return rows.filter(r => creativeRowMatchesQuery(r, q));
+  }
+  return rows.filter(r => {
+    if (creativeRowMatchesQuery(r, q)) return true;
+    const children = adRowsForGroup(start, end, creativeViewMode, r.id);
+    return children.some(c => creativeRowMatchesQuery(c, q));
+  });
 }
 
 // 일별(Daily) 드릴다운: 특정 소재(adId)의 선택 기간 내 일자별 성과 (하루 단위로 빈 날짜는 0으로 채움)
@@ -1517,7 +1535,7 @@ function renderCreativeTable(start, end) {
     return;
   }
 
-  const rows = sortCreativeRows(applyCreativeSearch(currentCreativeTableRows(start, end)));
+  const rows = sortCreativeRows(applyCreativeSearch(currentCreativeTableRows(start, end), start, end));
 
   if (!rows.length) {
     body.innerHTML = `<tr><td colspan="14" class="text-center text-neutral-400 text-sm py-10">조건에 맞는 데이터가 없습니다.</td></tr>`;
@@ -1580,7 +1598,11 @@ function renderCreativeTable(start, end) {
     }
 
     if (grouped && isExpanded) {
-      const children = adRowsForGroup(start, end, creativeViewMode, groupKey);
+      let children = adRowsForGroup(start, end, creativeViewMode, groupKey);
+      // 검색어가 있는 상태로 그룹을 펼쳤을 때는, 검색어와 무관한 하위 소재까지 전부 보이지 않도록
+      // (그룹 자체가 매칭된 이유가 하위 소재 중 일부였을 뿐이므로) 펼침 목록도 검색어로 한 번 더 거릅니다.
+      const q = creativeSearchQuery.trim().toLowerCase();
+      if (q) children = children.filter(c => creativeRowMatchesQuery(c, q));
       if (!children.length) {
         const emptyTr = document.createElement("tr");
         emptyTr.className = "border-b border-neutral-100 bg-gray-50";
