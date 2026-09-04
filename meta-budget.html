@@ -125,6 +125,10 @@
         오늘 변경한 세트만 보기
       </button>
 
+      <button id="btnConversionOnly" class="text-xs px-3 py-1.5 rounded-md border border-slate-300 hover:bg-slate-50 data-[on=true]:bg-indigo-600 data-[on=true]:text-white data-[on=true]:border-indigo-600" data-on="true" title="캠페인명에 '전환'이 포함된 캠페인만 표시">
+        전환 캠페인만 보기
+      </button>
+
       <button id="btnToggleAll" class="text-xs px-3 py-1.5 rounded-md border border-slate-300 hover:bg-slate-50">전체 펼치기</button>
 
       <span class="text-xs text-slate-400">|</span>
@@ -185,7 +189,8 @@ const state = {
   historyRows: [],         // rows for a past date (history mode)
   searchTerm: '',
   filterChangedOnly: false,
-  latestDataDate: '',      // meta_ad_performance 상 가장 최근 날짜 (= "전일")
+  conversionOnly: true,   // 캠페인명에 '전환'이 포함된 캠페인만 기본으로 표시
+  latestDataDate: '',      // meta_ad_performance 상 가장 최근 날짜 — "운영 세트(지출>0)" 판정 기준일. 전일/당일 지표 계산에는 사용하지 않음(캘린더 기준 고정)
   periodDays: 7,
   metrics: new Map(),      // adset_id -> { today:{spend,purchases,revenue}, yesterday:{...}, period:{...} }
   expandedCampaigns: new Set(),
@@ -351,9 +356,14 @@ async function syncOperatingAdsetsFromSupabase({ silent } = {}) {
    ========================================================================== */
 async function fetchMetrics() {
   if (!state.supabase || !state.operatingAdsets.length) { state.metrics = new Map(); return; }
+  // "전일/당일/최근 N일"은 항상 캘린더 기준 고정 날짜로 계산합니다.
+  // (meta_ad_performance에 남아있는 "가장 최근 날짜"를 기준으로 삼으면, 당일 데이터가
+  //  이미 업로드된 경우 전일=당일이 되어버리는 문제가 있어 캘린더 날짜로 고정합니다.)
   const today = todayStr();
-  const refDate = state.latestDataDate || today;
-  const rangeStart = addDaysStr(refDate, -(Math.max(state.periodDays, 2) + 2));
+  const yesterday = addDaysStr(today, -1);
+  const periodEnd = yesterday; // 최근 N일은 "완결된" 날짜(어제)까지로 집계 (당일은 데이터가 부분적일 수 있어 제외)
+  const periodStart = addDaysStr(periodEnd, -(state.periodDays - 1));
+  const rangeStart = periodStart < yesterday ? periodStart : yesterday;
   const adsetIds = state.operatingAdsets.map(a => a.adset_id);
 
   try {
@@ -373,7 +383,6 @@ async function fetchMetrics() {
       byAdset.get(id).push(r);
     }
 
-    const periodStart = addDaysStr(refDate, -(state.periodDays - 1));
     const metrics = new Map();
     for (const id of adsetIds) {
       const list = byAdset.get(id) || [];
@@ -386,8 +395,8 @@ async function fetchMetrics() {
 
       metrics.set(id, {
         today: sum(r => r.date === today),
-        yesterday: sum(r => r.date === refDate),
-        period: sum(r => r.date >= periodStart && r.date <= refDate),
+        yesterday: sum(r => r.date === yesterday),
+        period: sum(r => r.date >= periodStart && r.date <= periodEnd),
       });
     }
     state.metrics = metrics;
@@ -636,7 +645,7 @@ async function loadTodayEditableData() {
     return;
   }
   const today = state.selectedDate;
-  const yesterday = state.latestDataDate || addDaysStr(today, -1);
+  const yesterday = addDaysStr(today, -1); // 전일(예산 이관 기준일)은 항상 캘린더 기준 어제로 고정
   const adsetIds = state.operatingAdsets.map(a => a.adset_id);
 
   let todayExisting = [];
@@ -743,6 +752,9 @@ function updateModeBadge() {
 function getFilteredAdsetRows() {
   const term = state.searchTerm.trim().toLowerCase();
   let arr = Array.from(state.rows.values());
+  if (state.conversionOnly) {
+    arr = arr.filter(r => (r.campaign_name || '').includes('전환'));
+  }
   if (term) {
     arr = arr.filter(r => (r.campaign_name || '').toLowerCase().includes(term) || (r.adset_name || '').toLowerCase().includes(term) || (r.adset_id || '').toLowerCase().includes(term));
   }
@@ -759,6 +771,10 @@ function renderTableHead() {
     thead.innerHTML = `
       <tr class="bg-slate-800 text-white text-xs">
         <th class="px-3 py-2 text-left font-medium sticky left-0 bg-slate-800 z-10 min-w-[280px]">캠페인 / 세트</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[85px] grp-border-l">${n}일 지출</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[70px]">${n}일 구매</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[75px]">${n}일 ROAS</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[80px]">${n}일 CPA</th>
         <th class="px-2 py-2 text-right font-medium min-w-[85px] grp-border-l">전일 지출</th>
         <th class="px-2 py-2 text-right font-medium min-w-[70px]">전일 구매</th>
         <th class="px-2 py-2 text-right font-medium min-w-[75px]">전일 ROAS</th>
@@ -767,10 +783,6 @@ function renderTableHead() {
         <th class="px-2 py-2 text-right font-medium min-w-[70px]">당일 구매</th>
         <th class="px-2 py-2 text-right font-medium min-w-[75px]">당일 ROAS</th>
         <th class="px-2 py-2 text-right font-medium min-w-[80px]">당일 CPA</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[85px] grp-border-l">${n}일 지출</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[70px]">${n}일 구매</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[75px]">${n}일 ROAS</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[80px]">${n}일 CPA</th>
         <th class="px-2 py-2 text-right font-medium min-w-[100px] grp-border-l">시작 예산</th>
         <th class="px-2 py-2 text-right font-medium min-w-[130px]">조정 예산</th>
         <th class="px-2 py-2 text-left font-medium min-w-[200px]">메모</th>
@@ -810,6 +822,9 @@ function renderTable() {
   } else {
     const term = state.searchTerm.trim().toLowerCase();
     let rows = state.historyRows.slice();
+    if (state.conversionOnly) {
+      rows = rows.filter(r => (r.campaign_name || '').includes('전환'));
+    }
     if (term) {
       rows = rows.filter(r => (r.campaign_name || '').toLowerCase().includes(term) || (r.adset_name || '').toLowerCase().includes(term) || (r.adset_id || '').toLowerCase().includes(term));
     }
@@ -850,6 +865,10 @@ function campaignGroupHtml(group, forceExpand) {
       <span class="text-slate-800">${esc(group.campaign_name)}</span>
       <span class="text-slate-400 text-xs font-normal ml-1.5">(${group.adsets.length}개 세트)</span>
     </td>
+    <td class="px-2 py-2 text-right font-mono grp-border-l">${fmtNum(p.spend)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtNum(p.purchases)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtPct(p.roas)}</td>
+    <td class="px-2 py-2 text-right font-mono">${p.cpa !== null ? fmtNum(Math.round(p.cpa)) : '-'}</td>
     <td class="px-2 py-2 text-right font-mono grp-border-l">${fmtNum(y.spend)}</td>
     <td class="px-2 py-2 text-right font-mono">${fmtNum(y.purchases)}</td>
     <td class="px-2 py-2 text-right font-mono">${fmtPct(y.roas)}</td>
@@ -858,10 +877,6 @@ function campaignGroupHtml(group, forceExpand) {
     <td class="px-2 py-2 text-right font-mono">${fmtNum(t.purchases)}</td>
     <td class="px-2 py-2 text-right font-mono">${fmtPct(t.roas)}</td>
     <td class="px-2 py-2 text-right font-mono">${t.cpa !== null ? fmtNum(Math.round(t.cpa)) : '-'}</td>
-    <td class="px-2 py-2 text-right font-mono grp-border-l">${fmtNum(p.spend)}</td>
-    <td class="px-2 py-2 text-right font-mono">${fmtNum(p.purchases)}</td>
-    <td class="px-2 py-2 text-right font-mono">${fmtPct(p.roas)}</td>
-    <td class="px-2 py-2 text-right font-mono">${p.cpa !== null ? fmtNum(Math.round(p.cpa)) : '-'}</td>
     <td class="px-2 py-2 text-right text-slate-300 grp-border-l">-</td>
     <td class="px-2 py-2 text-right text-slate-300">-</td>
     <td class="px-2 py-2 text-slate-300">-</td>
@@ -890,6 +905,10 @@ function rowHtmlEditable(r) {
   return `
   <tr data-adset-id="${escAttr(r.adset_id)}" data-campaign="${escAttr(r.campaign_name)}" class="${dirtyCls} ${savedCls} hover:bg-slate-50 transition-colors">
     <td class="px-3 py-1.5 pl-9 sticky left-0 bg-white ${r.dirty ? 'row-dirty' : ''} z-[1] max-w-[280px] truncate" title="${escAttr(r.adset_name)}">${esc(r.adset_name) || '<span class="text-slate-300">-</span>'}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-600 grp-border-l">${fmtNum(p.spend)}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-600">${fmtNum(p.purchases)}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-600">${fmtPct(p.roas)}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-600">${p.cpa !== null ? fmtNum(Math.round(p.cpa)) : '-'}</td>
     <td class="px-2 py-1.5 text-right font-mono text-slate-600 grp-border-l">${fmtNum(y.spend)}</td>
     <td class="px-2 py-1.5 text-right font-mono text-slate-600">${fmtNum(y.purchases)}</td>
     <td class="px-2 py-1.5 text-right font-mono text-slate-600">${fmtPct(y.roas)}</td>
@@ -898,10 +917,6 @@ function rowHtmlEditable(r) {
     <td class="px-2 py-1.5 text-right font-mono text-slate-500">${fmtNum(t.purchases)}</td>
     <td class="px-2 py-1.5 text-right font-mono text-slate-500">${fmtPct(t.roas)}</td>
     <td class="px-2 py-1.5 text-right font-mono text-slate-500">${t.cpa !== null ? fmtNum(Math.round(t.cpa)) : '-'}</td>
-    <td class="px-2 py-1.5 text-right font-mono text-slate-600 grp-border-l">${fmtNum(p.spend)}</td>
-    <td class="px-2 py-1.5 text-right font-mono text-slate-600">${fmtNum(p.purchases)}</td>
-    <td class="px-2 py-1.5 text-right font-mono text-slate-600">${fmtPct(p.roas)}</td>
-    <td class="px-2 py-1.5 text-right font-mono text-slate-600">${p.cpa !== null ? fmtNum(Math.round(p.cpa)) : '-'}</td>
     <td class="px-2 py-1.5 text-right font-mono text-slate-500 grp-border-l">${fmtNum(r.initial_budget)}</td>
     <td class="px-2 py-1.5 text-right">
       <input type="number" inputmode="numeric" data-field="adjusted_budget"
@@ -964,7 +979,8 @@ function updateStatsBar() {
     const arr = Array.from(state.rows.values());
     const totalSpend = arr.reduce((s, r) => s + (Number(r.spend) || 0), 0);
     const dirtyCount = arr.filter(r => r.dirty).length;
-    el.textContent = `세트 ${arr.length}개 · 전일 지출 합계 ${fmtNum(totalSpend)}원 · 수정 대기 ${dirtyCount}건`;
+    const dateLabel = state.latestDataDate ? `${state.latestDataDate} 기준` : '최신 데이터 기준';
+    el.textContent = `세트 ${arr.length}개 · 운영 세트 판정(${dateLabel}) 지출 합계 ${fmtNum(totalSpend)}원 · 수정 대기 ${dirtyCount}건`;
   } else {
     const totalSpend = state.historyRows.reduce((s, r) => s + (Number(r.spend) || 0), 0);
     el.textContent = `${state.selectedDate} 기록 ${state.historyRows.length}건 · 지출 합계 ${fmtNum(totalSpend)}원`;
@@ -1141,6 +1157,12 @@ document.getElementById('searchInput').addEventListener('input', (e) => {
 document.getElementById('btnFilterChanged').addEventListener('click', (e) => {
   state.filterChangedOnly = !state.filterChangedOnly;
   e.target.dataset.on = state.filterChangedOnly ? 'true' : 'false';
+  renderTable();
+});
+
+document.getElementById('btnConversionOnly').addEventListener('click', (e) => {
+  state.conversionOnly = !state.conversionOnly;
+  e.target.dataset.on = state.conversionOnly ? 'true' : 'false';
   renderTable();
 });
 
