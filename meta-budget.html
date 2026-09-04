@@ -34,6 +34,19 @@
   .site-nav-link { font-size: 13.5px; font-weight: 600; text-decoration: none; color: #666; padding: 6px 14px; border-radius: 8px; transition: background .12s, color .12s; }
   .site-nav-link:hover { background: #f5f5f5; color: #171717; }
   .site-nav-link.active { background: #171717; color: #fff; }
+
+  /* 캠페인/세트명 컬럼: 드래그로 너비 조절 가능 */
+  :root { --name-col-w: 280px; }
+  .name-col { width: var(--name-col-w); min-width: var(--name-col-w); max-width: var(--name-col-w); }
+  .col-resize-handle { position: absolute; top: 0; right: 0; width: 8px; height: 100%; cursor: col-resize; user-select: none; touch-action: none; }
+  .col-resize-handle::after { content: ''; position: absolute; top: 0; right: 3px; width: 2px; height: 100%; background: rgba(255,255,255,0.15); }
+  .col-resize-handle:hover::after, .col-resize-handle.resizing::after { background: #6366f1; }
+
+  /* 정렬 가능한 헤더 */
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { background-color: #0f172a; }
+  .sort-arrow { display: inline-block; margin-left: 3px; font-size: 9px; opacity: .35; }
+  .sort-arrow.active { opacity: 1; color: #818cf8; }
 </style>
 </head>
 <body class="bg-slate-100 text-slate-800 text-sm">
@@ -210,6 +223,9 @@ const state = {
   metrics: new Map(),      // adset_id -> { today:{spend,purchases,revenue}, yesterday:{...}, period:{...} }
   expandedCampaigns: new Set(),
   allExpanded: false,
+  sortKey: 'yesterday_spend',   // 기본 정렬: 전일 지출
+  sortDir: 'desc',
+  nameColWidth: Number(localStorage.getItem('bh_name_col_w')) || 280,
 };
 
 function todayStr(offsetDays = 0) {
@@ -382,13 +398,27 @@ async function fetchMetrics() {
   const adsetIds = state.operatingAdsets.map(a => a.adset_id);
 
   try {
-    const { data, error } = await state.supabase
-      .from('meta_ad_performance')
-      .select('adset_id, date, spend, purchases, purchase_value')
-      .in('adset_id', adsetIds)
-      .gte('date', rangeStart)
-      .lte('date', today);
-    if (error) throw error;
+    // meta_ad_performance는 광고(ad) 단위 데이터라 세트당 여러 행이 존재합니다.
+    // 기간을 넓히면(예: 21일) 한 번의 조회로 Supabase 기본 응답 제한(1,000행)을
+    // 넘어서 최근 날짜 행이 잘려나갈 수 있으므로, 전체 행을 다 받을 때까지
+    // .range()로 페이지를 나눠서 가져옵니다.
+    const pageSize = 1000;
+    let from = 0;
+    let data = [];
+    while (true) {
+      const { data: page, error } = await state.supabase
+        .from('meta_ad_performance')
+        .select('adset_id, date, spend, purchases, purchase_value')
+        .in('adset_id', adsetIds)
+        .gte('date', rangeStart)
+        .lte('date', today)
+        .order('date', { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      data = data.concat(page || []);
+      if (!page || page.length < pageSize) break;
+      from += pageSize;
+    }
 
     const byAdset = new Map();
     for (const r of data || []) {
@@ -779,38 +809,180 @@ function getFilteredAdsetRows() {
   return arr;
 }
 
+/* ==========================================================================
+   정렬 (헤더 클릭 시 오름/내림차순 토글)
+   ========================================================================== */
+const TODAY_HEAD_COLUMNS = [
+  { key: 'period_spend', label: n => `${n}일 지출`, minw: 85, border: true },
+  { key: 'period_purchases', label: n => `${n}일 구매`, minw: 70 },
+  { key: 'period_roas', label: n => `${n}일 ROAS`, minw: 75 },
+  { key: 'period_cpa', label: n => `${n}일 CPA`, minw: 80 },
+  { key: 'yesterday_spend', label: () => '전일 지출', minw: 85, border: true },
+  { key: 'yesterday_purchases', label: () => '전일 구매', minw: 70 },
+  { key: 'yesterday_roas', label: () => '전일 ROAS', minw: 75 },
+  { key: 'yesterday_cpa', label: () => '전일 CPA', minw: 80 },
+  { key: 'today_spend', label: () => '당일 지출', minw: 85, border: true },
+  { key: 'today_purchases', label: () => '당일 구매', minw: 70 },
+  { key: 'today_roas', label: () => '당일 ROAS', minw: 75 },
+  { key: 'today_cpa', label: () => '당일 CPA', minw: 80 },
+  { key: 'initial_budget', label: () => '시작 예산', minw: 100, border: true },
+  { key: 'adjusted_budget', label: () => '조정 예산', minw: 130 },
+];
+const TODAY_SORT_KEYS = new Set(['name', ...TODAY_HEAD_COLUMNS.map(c => c.key)]);
+
+const HISTORY_HEAD_COLUMNS = [
+  { key: 'spend', label: '지출', minw: 100 },
+  { key: 'initial_budget', label: '시작 예산', minw: 110 },
+  { key: 'adjusted_budget', label: '조정 예산', minw: 110 },
+];
+const HISTORY_SORT_KEYS = new Set(['name', ...HISTORY_HEAD_COLUMNS.map(c => c.key)]);
+
+function sortArrowHtml(key) {
+  const active = state.sortKey === key;
+  const arrow = active && state.sortDir === 'asc' ? '▲' : '▼';
+  return `<span class="sort-arrow ${active ? 'active' : ''}">${arrow}</span>`;
+}
+
+function computeGroupMetrics(group) {
+  const sums = group.adsets.reduce((acc, r) => {
+    const m = state.metrics.get(r.adset_id) || {};
+    acc.yesterday = addMetricSums(acc.yesterday, m.yesterday || { spend: 0, purchases: 0, revenue: 0 });
+    acc.today = addMetricSums(acc.today, m.today || { spend: 0, purchases: 0, revenue: 0 });
+    acc.period = addMetricSums(acc.period, m.period || { spend: 0, purchases: 0, revenue: 0 });
+    return acc;
+  }, { yesterday: { spend: 0, purchases: 0, revenue: 0 }, today: { spend: 0, purchases: 0, revenue: 0 }, period: { spend: 0, purchases: 0, revenue: 0 } });
+  return { sums, y: deriveMetric(sums.yesterday), t: deriveMetric(sums.today), p: deriveMetric(sums.period) };
+}
+
+function adjustedOrInitial(r) {
+  return (r.adjusted_budget !== null && r.adjusted_budget !== undefined) ? Number(r.adjusted_budget) || 0 : (Number(r.initial_budget) || 0);
+}
+
+function todayRowSortEntry(r) {
+  const m = state.metrics.get(r.adset_id) || {};
+  const y = deriveMetric(m.yesterday);
+  const t = deriveMetric(m.today);
+  const p = deriveMetric(m.period);
+  return {
+    name: r.adset_name || '',
+    period_spend: p.spend, period_purchases: p.purchases, period_roas: p.roas, period_cpa: p.cpa,
+    yesterday_spend: y.spend, yesterday_purchases: y.purchases, yesterday_roas: y.roas, yesterday_cpa: y.cpa,
+    today_spend: t.spend, today_purchases: t.purchases, today_roas: t.roas, today_cpa: t.cpa,
+    initial_budget: Number(r.initial_budget) || 0,
+    adjusted_budget: adjustedOrInitial(r),
+  };
+}
+function todayGroupSortEntry(group) {
+  const { y, t, p } = computeGroupMetrics(group);
+  return {
+    name: group.campaign_name || '',
+    period_spend: p.spend, period_purchases: p.purchases, period_roas: p.roas, period_cpa: p.cpa,
+    yesterday_spend: y.spend, yesterday_purchases: y.purchases, yesterday_roas: y.roas, yesterday_cpa: y.cpa,
+    today_spend: t.spend, today_purchases: t.purchases, today_roas: t.roas, today_cpa: t.cpa,
+    initial_budget: group.adsets.reduce((s, r) => s + (Number(r.initial_budget) || 0), 0),
+    adjusted_budget: group.adsets.reduce((s, r) => s + adjustedOrInitial(r), 0),
+  };
+}
+function historyRowSortEntry(r) {
+  return {
+    name: r.adset_name || '',
+    spend: Number(r.spend) || 0,
+    initial_budget: Number(r.initial_budget) || 0,
+    adjusted_budget: Number(r.adjusted_budget) || 0,
+  };
+}
+function historyGroupSortEntry(group) {
+  return {
+    name: group.campaign_name || '',
+    spend: group.adsets.reduce((s, r) => s + (Number(r.spend) || 0), 0),
+    initial_budget: group.adsets.reduce((s, r) => s + (Number(r.initial_budget) || 0), 0),
+    adjusted_budget: group.adsets.reduce((s, r) => s + (Number(r.adjusted_budget) || 0), 0),
+  };
+}
+
+function compareEntries(a, b, key, dir) {
+  let av = a[key], bv = b[key];
+  if (av === undefined) av = null;
+  if (bv === undefined) bv = null;
+  const aNull = av === null || (typeof av === 'number' && Number.isNaN(av));
+  const bNull = bv === null || (typeof bv === 'number' && Number.isNaN(bv));
+  if (aNull && bNull) return 0;
+  if (aNull) return 1;   // null(-)은 정렬 방향과 무관하게 항상 맨 아래
+  if (bNull) return -1;
+  let cmp;
+  if (typeof av === 'string' || typeof bv === 'string') cmp = String(av).localeCompare(String(bv), 'ko');
+  else cmp = av - bv;
+  return dir === 'asc' ? cmp : -cmp;
+}
+
+function handleHeaderSortClick(e) {
+  if (e.target.closest('.col-resize-handle')) return;
+  const th = e.target.closest('th[data-sort-key]');
+  if (!th) return;
+  const key = th.dataset.sortKey;
+  if (state.sortKey === key) {
+    state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    state.sortKey = key;
+    state.sortDir = key === 'name' ? 'asc' : 'desc';
+  }
+  renderTable();
+}
+
+function setupNameColResize() {
+  let resizing = false, startX = 0, startW = 0, handleEl = null;
+  document.addEventListener('mousedown', (e) => {
+    const handle = e.target.closest('.col-resize-handle');
+    if (!handle) return;
+    resizing = true;
+    handleEl = handle;
+    handle.classList.add('resizing');
+    startX = e.clientX;
+    startW = state.nameColWidth;
+    document.body.style.cursor = 'col-resize';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!resizing) return;
+    const delta = e.clientX - startX;
+    const w = Math.min(560, Math.max(160, Math.round(startW + delta)));
+    state.nameColWidth = w;
+    document.documentElement.style.setProperty('--name-col-w', w + 'px');
+  });
+  document.addEventListener('mouseup', () => {
+    if (!resizing) return;
+    resizing = false;
+    if (handleEl) handleEl.classList.remove('resizing');
+    handleEl = null;
+    document.body.style.cursor = '';
+    localStorage.setItem('bh_name_col_w', String(state.nameColWidth));
+  });
+}
+
 function renderTableHead() {
   const thead = document.getElementById('tableHead');
   const n = state.periodDays;
   if (state.isTodayMode) {
+    const cols = TODAY_HEAD_COLUMNS.map(c => {
+      const cls = ['px-2 py-2 text-right font-medium sortable', c.border ? 'grp-border-l' : ''].filter(Boolean).join(' ');
+      return `<th class="${cls}" style="min-width:${c.minw}px" data-sort-key="${c.key}">${esc(c.label(n))}${sortArrowHtml(c.key)}</th>`;
+    }).join('');
     thead.innerHTML = `
       <tr class="bg-slate-800 text-white text-xs">
-        <th class="px-3 py-2 text-left font-medium sticky left-0 bg-slate-800 z-10 min-w-[280px]">캠페인 / 세트</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[85px] grp-border-l">${n}일 지출</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[70px]">${n}일 구매</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[75px]">${n}일 ROAS</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[80px]">${n}일 CPA</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[85px] grp-border-l">전일 지출</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[70px]">전일 구매</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[75px]">전일 ROAS</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[80px]">전일 CPA</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[85px] grp-border-l">당일 지출</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[70px]">당일 구매</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[75px]">당일 ROAS</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[80px]">당일 CPA</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[100px] grp-border-l">시작 예산</th>
-        <th class="px-2 py-2 text-right font-medium min-w-[130px]">조정 예산</th>
+        <th class="px-3 py-2 text-left font-medium sticky left-0 bg-slate-800 z-10 name-col relative sortable" data-sort-key="name">캠페인 / 세트${sortArrowHtml('name')}<span class="col-resize-handle" title="드래그해서 너비 조절"></span></th>
+        ${cols}
         <th class="px-2 py-2 text-left font-medium min-w-[200px]">메모</th>
         <th class="px-2 py-2 text-center font-medium min-w-[90px]">상태</th>
         <th class="px-2 py-2 text-center font-medium min-w-[70px]">저장</th>
       </tr>`;
   } else {
+    const cols = HISTORY_HEAD_COLUMNS.map(c =>
+      `<th class="px-3 py-2 text-right font-medium sortable" style="min-width:${c.minw}px" data-sort-key="${c.key}">${esc(c.label)}${sortArrowHtml(c.key)}</th>`
+    ).join('');
     thead.innerHTML = `
       <tr class="bg-slate-800 text-white text-xs">
-        <th class="px-3 py-2 text-left font-medium sticky left-0 bg-slate-800 z-10 min-w-[280px]">캠페인 / 세트</th>
-        <th class="px-3 py-2 text-right font-medium min-w-[100px]">지출</th>
-        <th class="px-3 py-2 text-right font-medium min-w-[110px]">시작 예산</th>
-        <th class="px-3 py-2 text-right font-medium min-w-[110px]">조정 예산</th>
+        <th class="px-3 py-2 text-left font-medium sticky left-0 bg-slate-800 z-10 name-col relative sortable" data-sort-key="name">캠페인 / 세트${sortArrowHtml('name')}<span class="col-resize-handle" title="드래그해서 너비 조절"></span></th>
+        ${cols}
         <th class="px-3 py-2 text-left font-medium min-w-[240px]">메모</th>
       </tr>`;
   }
@@ -824,7 +996,10 @@ function renderTable() {
   if (state.isTodayMode) {
     const filtered = getFilteredAdsetRows();
     const groups = buildCampaignGroups(filtered);
-    groups.sort((a, b) => a.campaign_name.localeCompare(b.campaign_name, 'ko'));
+    const sortKey = TODAY_SORT_KEYS.has(state.sortKey) ? state.sortKey : 'yesterday_spend';
+    const sortDir = state.sortDir;
+    groups.forEach(g => g.adsets.sort((a, b) => compareEntries(todayRowSortEntry(a), todayRowSortEntry(b), sortKey, sortDir)));
+    groups.sort((a, b) => compareEntries(todayGroupSortEntry(a), todayGroupSortEntry(b), sortKey, sortDir));
 
     if (!groups.length) {
       tbody.innerHTML = '';
@@ -844,7 +1019,10 @@ function renderTable() {
       rows = rows.filter(r => (r.campaign_name || '').toLowerCase().includes(term) || (r.adset_name || '').toLowerCase().includes(term) || (r.adset_id || '').toLowerCase().includes(term));
     }
     const groups = buildCampaignGroups(rows);
-    groups.sort((a, b) => a.campaign_name.localeCompare(b.campaign_name, 'ko'));
+    const sortKey = HISTORY_SORT_KEYS.has(state.sortKey) ? state.sortKey : 'spend';
+    const sortDir = state.sortDir;
+    groups.forEach(g => g.adsets.sort((a, b) => compareEntries(historyRowSortEntry(a), historyRowSortEntry(b), sortKey, sortDir)));
+    groups.sort((a, b) => compareEntries(historyGroupSortEntry(a), historyGroupSortEntry(b), sortKey, sortDir));
 
     if (!groups.length) {
       tbody.innerHTML = '';
@@ -861,21 +1039,11 @@ function renderTable() {
 
 function campaignGroupHtml(group, forceExpand) {
   const isOpen = forceExpand || state.allExpanded || state.expandedCampaigns.has(group.campaign_name);
-  const sums = group.adsets.reduce((acc, r) => {
-    const m = state.metrics.get(r.adset_id) || {};
-    acc.yesterday = addMetricSums(acc.yesterday, m.yesterday || { spend: 0, purchases: 0, revenue: 0 });
-    acc.today = addMetricSums(acc.today, m.today || { spend: 0, purchases: 0, revenue: 0 });
-    acc.period = addMetricSums(acc.period, m.period || { spend: 0, purchases: 0, revenue: 0 });
-    return acc;
-  }, { yesterday: { spend: 0, purchases: 0, revenue: 0 }, today: { spend: 0, purchases: 0, revenue: 0 }, period: { spend: 0, purchases: 0, revenue: 0 } });
-
-  const y = deriveMetric(sums.yesterday);
-  const t = deriveMetric(sums.today);
-  const p = deriveMetric(sums.period);
+  const { y, t, p } = computeGroupMetrics(group);
 
   const headerRow = `
   <tr class="campaign-row bg-slate-50 font-medium" data-campaign="${escAttr(group.campaign_name)}">
-    <td class="px-3 py-2 sticky left-0 bg-slate-50 z-[1]">
+    <td class="px-3 py-2 sticky left-0 bg-slate-50 z-[1] name-col">
       <span class="chevron ${isOpen ? 'open' : ''} text-slate-400 mr-1.5">▶</span>
       <span class="text-slate-800">${esc(group.campaign_name)}</span>
       <span class="text-slate-400 text-xs font-normal ml-1.5">(${group.adsets.length}개 세트)</span>
@@ -919,7 +1087,7 @@ function rowHtmlEditable(r) {
 
   return `
   <tr data-adset-id="${escAttr(r.adset_id)}" data-campaign="${escAttr(r.campaign_name)}" class="${dirtyCls} ${savedCls} hover:bg-slate-50 transition-colors">
-    <td class="px-3 py-1.5 pl-9 sticky left-0 bg-white ${r.dirty ? 'row-dirty' : ''} z-[1] max-w-[280px] truncate" title="${escAttr(r.adset_name)}">${esc(r.adset_name) || '<span class="text-slate-300">-</span>'}</td>
+    <td class="px-3 py-1.5 pl-9 sticky left-0 bg-white ${r.dirty ? 'row-dirty' : ''} z-[1] name-col truncate" title="${escAttr(r.adset_name)}">${esc(r.adset_name) || '<span class="text-slate-300">-</span>'}</td>
     <td class="px-2 py-1.5 text-right font-mono text-slate-600 grp-border-l">${fmtNum(p.spend)}</td>
     <td class="px-2 py-1.5 text-right font-mono text-slate-600">${fmtNum(p.purchases)}</td>
     <td class="px-2 py-1.5 text-right font-mono text-slate-600">${fmtPct(p.roas)}</td>
@@ -957,7 +1125,7 @@ function campaignGroupHistoryHtml(group, forceExpand) {
   const totalSpend = group.adsets.reduce((s, r) => s + (Number(r.spend) || 0), 0);
   const headerRow = `
   <tr class="campaign-row bg-slate-50 font-medium" data-campaign="${escAttr(group.campaign_name)}">
-    <td class="px-3 py-2 sticky left-0 bg-slate-50 z-[1]">
+    <td class="px-3 py-2 sticky left-0 bg-slate-50 z-[1] name-col">
       <span class="chevron ${isOpen ? 'open' : ''} text-slate-400 mr-1.5">▶</span>
       <span class="text-slate-800">${esc(group.campaign_name)}</span>
       <span class="text-slate-400 text-xs font-normal ml-1.5">(${group.adsets.length}개 세트)</span>
@@ -974,7 +1142,7 @@ function campaignGroupHistoryHtml(group, forceExpand) {
 function rowHtmlHistory(r) {
   return `
   <tr class="hover:bg-slate-50">
-    <td class="px-3 py-1.5 pl-9 sticky left-0 bg-white z-[1] max-w-[280px] truncate" title="${escAttr(r.adset_name)}">${esc(r.adset_name) || '-'}</td>
+    <td class="px-3 py-1.5 pl-9 sticky left-0 bg-white z-[1] name-col truncate" title="${escAttr(r.adset_name)}">${esc(r.adset_name) || '-'}</td>
     <td class="px-3 py-1.5 text-right font-mono text-slate-600">${fmtNum(r.spend)}</td>
     <td class="px-3 py-1.5 text-right font-mono text-slate-500">${fmtNum(r.initial_budget)}</td>
     <td class="px-3 py-1.5 text-right font-mono font-medium text-slate-800">${fmtNum(r.adjusted_budget)}</td>
@@ -1207,6 +1375,9 @@ document.getElementById('btnBulkSave').addEventListener('click', bulkSaveDirty);
    초기화
    ========================================================================== */
 (function boot() {
+  document.documentElement.style.setProperty('--name-col-w', state.nameColWidth + 'px');
+  setupNameColResize();
+  document.getElementById('tableHead').addEventListener('click', handleHeaderSortClick);
   document.getElementById('datePicker').value = state.selectedDate;
   const savedLsKey = localStorage.getItem('bh_ls_key');
   if (savedLsKey) document.getElementById('lsKeyInput').value = savedLsKey;
