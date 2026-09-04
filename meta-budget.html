@@ -4,11 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>데일리 예산 히스토리 & 메모</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   html, body { height: 100%; }
+  body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, Roboto, 'Helvetica Neue', Arial, sans-serif; }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -19,6 +21,11 @@
   .toast { animation: toast-in .18s ease-out, toast-out .3s ease-in 2.2s forwards; }
   @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
   @keyframes toast-out { to { transform: translateY(-8px); opacity: 0; } }
+  .chevron { transition: transform .15s ease; display: inline-block; }
+  .chevron.open { transform: rotate(90deg); }
+  th.grp-border-l { border-left: 1px solid rgba(255,255,255,0.15); }
+  .campaign-row { cursor: pointer; }
+  .campaign-row:hover { background-color: #f1f5f9; }
 </style>
 </head>
 <body class="bg-slate-100 text-slate-800 text-sm">
@@ -27,7 +34,7 @@
 
   <!-- ===================== Header ===================== -->
   <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
-    <div class="max-w-[1500px] mx-auto px-4 py-3 flex flex-wrap items-center gap-3">
+    <div class="max-w-[1600px] mx-auto px-4 py-3 flex flex-wrap items-center gap-3">
       <div class="flex items-center gap-2 mr-2">
         <div class="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold">B</div>
         <div>
@@ -52,7 +59,7 @@
 
     <!-- Settings panel -->
     <div id="settingsPanel" class="hidden border-t border-slate-200 bg-slate-50">
-      <div class="max-w-[1500px] mx-auto px-4 py-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div class="max-w-[1600px] mx-auto px-4 py-3 grid grid-cols-1 md:grid-cols-3 gap-3">
         <div>
           <label class="block text-xs font-medium text-slate-600 mb-1">Supabase URL</label>
           <input id="sbUrl" type="text" placeholder="https://xxxx.supabase.co" class="w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm" />
@@ -107,16 +114,31 @@
   </header>
 
   <!-- ===================== Toolbar ===================== -->
-  <div class="max-w-[1500px] w-full mx-auto px-4 pt-4">
+  <div class="max-w-[1600px] w-full mx-auto px-4 pt-4">
     <div class="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center gap-2">
       <div class="relative">
-        <input id="searchInput" type="text" placeholder="캠페인명 / 세트명 검색..." class="border border-slate-300 rounded-md pl-8 pr-3 py-1.5 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+        <input id="searchInput" type="text" placeholder="캠페인명 / 세트명 검색..." class="border border-slate-300 rounded-md pl-8 pr-3 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
         <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
       </div>
 
       <button id="btnFilterChanged" class="text-xs px-3 py-1.5 rounded-md border border-slate-300 hover:bg-slate-50 data-[on=true]:bg-indigo-600 data-[on=true]:text-white data-[on=true]:border-indigo-600" data-on="false">
         오늘 변경한 세트만 보기
       </button>
+
+      <button id="btnToggleAll" class="text-xs px-3 py-1.5 rounded-md border border-slate-300 hover:bg-slate-50">전체 펼치기</button>
+
+      <span class="text-xs text-slate-400">|</span>
+
+      <div class="flex items-center gap-1.5">
+        <label class="text-xs text-slate-500">최근</label>
+        <input id="periodDaysInput" type="number" min="2" max="90" value="7" class="w-14 border border-slate-300 rounded-md px-1.5 py-1 text-sm text-center" />
+        <label class="text-xs text-slate-500">일 지표</label>
+        <div class="flex items-center gap-1 ml-1">
+          <button data-preset="4" class="period-preset text-xs px-2 py-1 rounded-md border border-slate-300 hover:bg-slate-50">4일</button>
+          <button data-preset="7" class="period-preset text-xs px-2 py-1 rounded-md border border-slate-300 hover:bg-slate-50">7일</button>
+          <button data-preset="30" class="period-preset text-xs px-2 py-1 rounded-md border border-slate-300 hover:bg-slate-50">30일</button>
+        </div>
+      </div>
 
       <span class="text-xs text-slate-400">|</span>
       <span id="statsBar" class="text-xs text-slate-500">세트 0개 · 지출 0원 · 수정 대기 0건</span>
@@ -131,29 +153,18 @@
   </div>
 
   <!-- ===================== Table ===================== -->
-  <div class="max-w-[1500px] w-full mx-auto px-4 py-4 flex-1 min-h-0">
-    <div id="tableWrap" class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col" style="height: calc(100vh - 230px);">
+  <div class="max-w-[1600px] w-full mx-auto px-4 py-4 flex-1 min-h-0">
+    <div id="tableWrap" class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col" style="height: calc(100vh - 240px);">
       <div class="overflow-auto flex-1">
         <table class="min-w-full border-collapse text-sm">
-          <thead class="sticky top-0 z-20">
-            <tr class="bg-slate-800 text-white text-xs">
-              <th class="px-3 py-2 text-left font-medium sticky left-0 bg-slate-800 z-10 min-w-[180px]">캠페인</th>
-              <th class="px-3 py-2 text-left font-medium min-w-[200px]">세트명</th>
-              <th class="px-3 py-2 text-right font-medium min-w-[100px]">전일 지출</th>
-              <th class="px-3 py-2 text-right font-medium min-w-[110px]">시작 예산</th>
-              <th class="px-3 py-2 text-right font-medium min-w-[130px]">조정 예산</th>
-              <th class="px-3 py-2 text-left font-medium min-w-[220px]">메모</th>
-              <th class="px-3 py-2 text-center font-medium min-w-[90px]">상태</th>
-              <th class="px-3 py-2 text-center font-medium min-w-[70px]">저장</th>
-            </tr>
-          </thead>
+          <thead id="tableHead" class="sticky top-0 z-20"></thead>
           <tbody id="tableBody" class="divide-y divide-slate-100"></tbody>
         </table>
       </div>
       <div id="emptyState" class="hidden flex-1 flex flex-col items-center justify-center text-slate-400 gap-2 py-16">
         <div class="text-3xl">📭</div>
         <p class="text-sm">표시할 데이터가 없습니다.</p>
-        <p class="text-xs">우측 상단 ⚙ 설정에서 운영 세트를 불러오거나, Supabase 연결 상태를 확인하세요.</p>
+        <p class="text-xs">우측 상단 ⚙ 설정에서 Supabase 연결 상태를 확인하거나 운영 세트를 새로고침해보세요.</p>
       </div>
     </div>
   </div>
@@ -174,6 +185,11 @@ const state = {
   historyRows: [],         // rows for a past date (history mode)
   searchTerm: '',
   filterChangedOnly: false,
+  latestDataDate: '',      // meta_ad_performance 상 가장 최근 날짜 (= "전일")
+  periodDays: 7,
+  metrics: new Map(),      // adset_id -> { today:{spend,purchases,revenue}, yesterday:{...}, period:{...} }
+  expandedCampaigns: new Set(),
+  allExpanded: false,
 };
 
 function todayStr(offsetDays = 0) {
@@ -182,15 +198,19 @@ function todayStr(offsetDays = 0) {
   const tz = d.getTimezoneOffset() * 60000;
   return new Date(d - tz).toISOString().slice(0, 10);
 }
-function yesterdayOf(dateStr) {
+function addDaysStr(dateStr, n) {
   const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() - 1);
+  d.setDate(d.getDate() + n);
   const tz = d.getTimezoneOffset() * 60000;
   return new Date(d - tz).toISOString().slice(0, 10);
 }
 function fmtNum(n) {
   if (n === null || n === undefined || n === '') return '-';
   return Number(n).toLocaleString('ko-KR');
+}
+function fmtPct(n) {
+  if (n === null || n === undefined || !isFinite(n)) return '-';
+  return Number(n).toLocaleString('ko-KR', { maximumFractionDigits: 1 }) + '%';
 }
 function toast(msg, type = 'info') {
   const el = document.createElement('div');
@@ -244,7 +264,6 @@ function setConnStatus(ok) {
    지출액(spend) > 0 인 세트만 추출
    ========================================================================== */
 
-// 캐시: 마지막으로 불러온 운영 세트 목록을 localStorage에 저장해 새로고침해도 유지되게 함
 function cacheOperatingAdsets(adsets) {
   try {
     localStorage.setItem('bh_last_adsets', JSON.stringify(adsets));
@@ -261,9 +280,7 @@ function loadCachedOperatingAdsets() {
 }
 
 /* ==========================================================================
-   Supabase(meta_ad_performance)에서 운영 세트 자동 동기화 — 메인 방식
-   기존 메타 대시보드가 raw 리포트 업로드 시 저장하는 테이블을 그대로 조회해서
-   가장 최근 날짜의 데이터를 세트ID 기준으로 합산, 지출액 > 0인 세트만 사용
+   Supabase(meta_ad_performance)에서 운영 세트 + 성과지표 자동 동기화 — 메인 방식
    ========================================================================== */
 async function syncOperatingAdsetsFromSupabase({ silent } = {}) {
   if (!state.supabase) return false;
@@ -271,7 +288,6 @@ async function syncOperatingAdsetsFromSupabase({ silent } = {}) {
   if (statusEl) statusEl.textContent = '불러오는 중...';
 
   try {
-    // 1) 가장 최근 날짜 조회
     const { data: latestRows, error: latestErr } = await state.supabase
       .from('meta_ad_performance')
       .select('date')
@@ -285,7 +301,6 @@ async function syncOperatingAdsetsFromSupabase({ silent } = {}) {
     }
     const latestDate = latestRows[0].date;
 
-    // 2) 해당 날짜의 세트별 데이터 조회 (1세트 여러 소재 대응 위해 전체 로우 가져와 클라이언트에서 합산)
     const { data: rows, error: rowsErr } = await state.supabase
       .from('meta_ad_performance')
       .select('campaign_name, adset_id, adset_name, spend')
@@ -314,10 +329,13 @@ async function syncOperatingAdsetsFromSupabase({ silent } = {}) {
     }
 
     state.operatingAdsets = adsets;
+    state.latestDataDate = latestDate;
     cacheOperatingAdsets(adsets);
     if (statusEl) statusEl.textContent = `${latestDate} 기준 세트 ${adsets.length}개 자동 동기화됨`;
     document.getElementById('reportFileName').textContent = '';
     if (!silent) toast(`Supabase에서 ${latestDate} 기준 운영 세트 ${adsets.length}개를 불러왔습니다.`, 'success');
+
+    await fetchMetrics();
     loadDateData();
     return true;
   } catch (e) {
@@ -328,7 +346,76 @@ async function syncOperatingAdsetsFromSupabase({ silent } = {}) {
   }
 }
 
-// 날짜 셀 값을 'YYYY-MM-DD' 문자열로 정규화 (Date 객체 / 엑셀 시리얼 / 문자열 모두 대응)
+/* ==========================================================================
+   전일 / 당일 / 최근 N일 성과지표 (지출·구매·ROAS·CPA) 조회
+   ========================================================================== */
+async function fetchMetrics() {
+  if (!state.supabase || !state.operatingAdsets.length) { state.metrics = new Map(); return; }
+  const today = todayStr();
+  const refDate = state.latestDataDate || today;
+  const rangeStart = addDaysStr(refDate, -(Math.max(state.periodDays, 2) + 2));
+  const adsetIds = state.operatingAdsets.map(a => a.adset_id);
+
+  try {
+    const { data, error } = await state.supabase
+      .from('meta_ad_performance')
+      .select('adset_id, date, spend, purchases, purchase_value')
+      .in('adset_id', adsetIds)
+      .gte('date', rangeStart)
+      .lte('date', today);
+    if (error) throw error;
+
+    const byAdset = new Map();
+    for (const r of data || []) {
+      const id = String(r.adset_id ?? '').trim();
+      if (!id) continue;
+      if (!byAdset.has(id)) byAdset.set(id, []);
+      byAdset.get(id).push(r);
+    }
+
+    const periodStart = addDaysStr(refDate, -(state.periodDays - 1));
+    const metrics = new Map();
+    for (const id of adsetIds) {
+      const list = byAdset.get(id) || [];
+      const sum = (filterFn) => list.filter(filterFn).reduce((acc, r) => {
+        acc.spend += Number(r.spend) || 0;
+        acc.purchases += Number(r.purchases) || 0;
+        acc.revenue += Number(r.purchase_value) || 0;
+        return acc;
+      }, { spend: 0, purchases: 0, revenue: 0 });
+
+      metrics.set(id, {
+        today: sum(r => r.date === today),
+        yesterday: sum(r => r.date === refDate),
+        period: sum(r => r.date >= periodStart && r.date <= refDate),
+      });
+    }
+    state.metrics = metrics;
+  } catch (e) {
+    console.error(e);
+    toast('성과지표 조회 실패: ' + e.message, 'error');
+    state.metrics = new Map();
+  }
+}
+
+function deriveMetric(m) {
+  const spend = m ? m.spend : 0;
+  const purchases = m ? m.purchases : 0;
+  const revenue = m ? m.revenue : 0;
+  return {
+    spend,
+    purchases,
+    roas: spend > 0 ? (revenue / spend) * 100 : null,
+    cpa: purchases > 0 ? spend / purchases : null,
+  };
+}
+function addMetricSums(a, b) {
+  return { spend: (a.spend || 0) + (b.spend || 0), purchases: (a.purchases || 0) + (b.purchases || 0), revenue: (a.revenue || 0) + (b.revenue || 0) };
+}
+
+/* ==========================================================================
+   날짜 셀 정규화 / 메타 리포트 파일 파싱 (수동 백업 업로드용)
+   ========================================================================== */
 function normalizeDateCell(v) {
   if (v === null || v === undefined || v === '') return '';
   if (v instanceof Date) {
@@ -336,7 +423,6 @@ function normalizeDateCell(v) {
     return new Date(v - tz).toISOString().slice(0, 10);
   }
   if (typeof v === 'number') {
-    // 엑셀 날짜 시리얼 번호 (1900 날짜 시스템 기준)
     const d = new Date(Math.round((v - 25569) * 86400 * 1000));
     return d.toISOString().slice(0, 10);
   }
@@ -346,13 +432,9 @@ function normalizeDateCell(v) {
   return s;
 }
 
-// 메타 광고관리자 원본 리포트(raw data) 형태 감지 및 파싱
-// 필요한 컬럼: 광고 세트 ID / 광고 세트 이름 / 캠페인 이름 / 지출 금액 / (선택) 날짜
-// 세트ID 기준으로 지출액을 합산하고(소재가 여러 개인 세트 대응), 가장 최근 날짜 데이터만 사용, spend > 0만 반환
 function parseMetaReportRows(rows) {
   if (!Array.isArray(rows) || !rows.length) return null;
   const headers = Object.keys(rows[0]);
-
   const findHeader = (...must) => headers.find(h => must.every(token => h.includes(token)));
 
   const dateKey = headers.find(h => h === '일') || findHeader('보고', '시작') || findHeader('날짜');
@@ -361,7 +443,6 @@ function parseMetaReportRows(rows) {
   const campaignNameKey = findHeader('캠페인', '이름');
   const spendKey = findHeader('지출');
 
-  // 필수 컬럼(세트ID, 지출액)이 없으면 메타 리포트 형식이 아닌 것으로 간주
   if (!adsetIdKey || !spendKey) return null;
 
   let latestDate = '';
@@ -387,7 +468,6 @@ function parseMetaReportRows(rows) {
     }
     const g = grouped.get(adsetId);
     g.spend += spend;
-    // 캠페인/세트명이 비어있던 경우 이후 행에서 채워넣기
     if (!g.campaign_name && campaignName) g.campaign_name = campaignName;
     if (!g.adset_name && adsetName) g.adset_name = adsetName;
   }
@@ -411,11 +491,12 @@ function handleReportUpload(file) {
       return;
     }
     state.operatingAdsets = result.adsets;
+    state.latestDataDate = result.date || state.latestDataDate;
     cacheOperatingAdsets(result.adsets);
     document.getElementById('reportFileName').textContent = `${file.name}${result.date ? ` (${result.date} 기준)` : ''}`;
     toast(`${result.date ? result.date + ' 기준 ' : ''}운영 세트 ${result.adsets.length}개를 불러왔습니다.`, 'success');
     document.getElementById('settingsPanel').classList.add('hidden');
-    loadDateData();
+    fetchMetrics().then(() => loadDateData());
   };
 
   const reader = new FileReader();
@@ -453,7 +534,6 @@ function handleReportUpload(file) {
 function normalizeAdsetList(raw) {
   let list = raw;
   if (!Array.isArray(list)) {
-    // 흔한 wrapper 키 탐색
     for (const k of ['adsets', 'data', 'items', 'rows', 'list']) {
       if (raw && Array.isArray(raw[k])) { list = raw[k]; break; }
     }
@@ -476,7 +556,6 @@ function normalizeAdsetList(raw) {
     return { campaign_name, adset_id, adset_name, spend };
   }).filter(a => a.adset_id);
 
-  // spend > 0 인 세트만 (요구사항)
   return normalized.filter(a => a.spend > 0);
 }
 
@@ -485,7 +564,7 @@ function loadFromLocalStorage() {
   localStorage.setItem('bh_ls_key', key);
   const raw = localStorage.getItem(key);
   if (!raw) {
-    toast(`localStorage에 "${key}" 키가 없습니다. JSON 업로드를 이용해주세요.`, 'warn');
+    toast(`localStorage에 "${key}" 키가 없습니다.`, 'warn');
     return;
   }
   try {
@@ -496,9 +575,10 @@ function loadFromLocalStorage() {
       return;
     }
     state.operatingAdsets = adsets;
+    cacheOperatingAdsets(adsets);
     toast(`운영 세트 ${adsets.length}개를 불러왔습니다.`, 'success');
     document.getElementById('settingsPanel').classList.add('hidden');
-    loadDateData();
+    fetchMetrics().then(() => loadDateData());
   } catch (e) {
     console.error(e);
     toast('localStorage 데이터 파싱에 실패했습니다.', 'error');
@@ -516,9 +596,10 @@ function handleJsonUpload(file) {
         return;
       }
       state.operatingAdsets = adsets;
+      cacheOperatingAdsets(adsets);
       toast(`JSON에서 운영 세트 ${adsets.length}개를 불러왔습니다.`, 'success');
       document.getElementById('settingsPanel').classList.add('hidden');
-      loadDateData();
+      fetchMetrics().then(() => loadDateData());
     } catch (err) {
       console.error(err);
       toast('JSON 파일을 읽을 수 없습니다.', 'error');
@@ -555,7 +636,7 @@ async function loadTodayEditableData() {
     return;
   }
   const today = state.selectedDate;
-  const yesterday = yesterdayOf(today);
+  const yesterday = state.latestDataDate || addDaysStr(today, -1);
   const adsetIds = state.operatingAdsets.map(a => a.adset_id);
 
   let todayExisting = [];
@@ -631,6 +712,19 @@ async function loadHistoryData(dateStr) {
 }
 
 /* ==========================================================================
+   캠페인 > 세트 그룹핑
+   ========================================================================== */
+function buildCampaignGroups(rowsArray) {
+  const groups = new Map();
+  for (const r of rowsArray) {
+    const key = r.campaign_name || '(캠페인명 없음)';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  return Array.from(groups.entries()).map(([campaign_name, adsets]) => ({ campaign_name, adsets }));
+}
+
+/* ==========================================================================
    렌더링
    ========================================================================== */
 function updateModeBadge() {
@@ -646,45 +740,137 @@ function updateModeBadge() {
   }
 }
 
-function getFilteredRows() {
+function getFilteredAdsetRows() {
   const term = state.searchTerm.trim().toLowerCase();
+  let arr = Array.from(state.rows.values());
+  if (term) {
+    arr = arr.filter(r => (r.campaign_name || '').toLowerCase().includes(term) || (r.adset_name || '').toLowerCase().includes(term) || (r.adset_id || '').toLowerCase().includes(term));
+  }
+  if (state.filterChangedOnly) {
+    arr = arr.filter(r => r.dirty || r.savedToday);
+  }
+  return arr;
+}
+
+function renderTableHead() {
+  const thead = document.getElementById('tableHead');
+  const n = state.periodDays;
   if (state.isTodayMode) {
-    let arr = Array.from(state.rows.values());
-    if (term) {
-      arr = arr.filter(r => (r.campaign_name || '').toLowerCase().includes(term) || (r.adset_name || '').toLowerCase().includes(term) || (r.adset_id || '').toLowerCase().includes(term));
-    }
-    if (state.filterChangedOnly) {
-      arr = arr.filter(r => r.dirty || r.savedToday);
-    }
-    return arr;
+    thead.innerHTML = `
+      <tr class="bg-slate-800 text-white text-xs">
+        <th class="px-3 py-2 text-left font-medium sticky left-0 bg-slate-800 z-10 min-w-[280px]">캠페인 / 세트</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[85px] grp-border-l">전일 지출</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[70px]">전일 구매</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[75px]">전일 ROAS</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[80px]">전일 CPA</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[85px] grp-border-l">당일 지출</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[70px]">당일 구매</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[75px]">당일 ROAS</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[80px]">당일 CPA</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[85px] grp-border-l">${n}일 지출</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[70px]">${n}일 구매</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[75px]">${n}일 ROAS</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[80px]">${n}일 CPA</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[100px] grp-border-l">시작 예산</th>
+        <th class="px-2 py-2 text-right font-medium min-w-[130px]">조정 예산</th>
+        <th class="px-2 py-2 text-left font-medium min-w-[200px]">메모</th>
+        <th class="px-2 py-2 text-center font-medium min-w-[90px]">상태</th>
+        <th class="px-2 py-2 text-center font-medium min-w-[70px]">저장</th>
+      </tr>`;
   } else {
-    let arr = state.historyRows.slice();
-    if (term) {
-      arr = arr.filter(r => (r.campaign_name || '').toLowerCase().includes(term) || (r.adset_name || '').toLowerCase().includes(term) || (r.adset_id || '').toLowerCase().includes(term));
-    }
-    return arr;
+    thead.innerHTML = `
+      <tr class="bg-slate-800 text-white text-xs">
+        <th class="px-3 py-2 text-left font-medium sticky left-0 bg-slate-800 z-10 min-w-[280px]">캠페인 / 세트</th>
+        <th class="px-3 py-2 text-right font-medium min-w-[100px]">지출</th>
+        <th class="px-3 py-2 text-right font-medium min-w-[110px]">시작 예산</th>
+        <th class="px-3 py-2 text-right font-medium min-w-[110px]">조정 예산</th>
+        <th class="px-3 py-2 text-left font-medium min-w-[240px]">메모</th>
+      </tr>`;
   }
 }
 
 function renderTable() {
+  renderTableHead();
   const tbody = document.getElementById('tableBody');
-  const rows = getFilteredRows();
   const emptyState = document.getElementById('emptyState');
 
-  if (!rows.length) {
-    tbody.innerHTML = '';
-    emptyState.classList.remove('hidden');
-  } else {
-    emptyState.classList.add('hidden');
-  }
-
   if (state.isTodayMode) {
-    tbody.innerHTML = rows.map(r => rowHtmlEditable(r)).join('');
+    const filtered = getFilteredAdsetRows();
+    const groups = buildCampaignGroups(filtered);
+    groups.sort((a, b) => a.campaign_name.localeCompare(b.campaign_name, 'ko'));
+
+    if (!groups.length) {
+      tbody.innerHTML = '';
+      emptyState.classList.remove('hidden');
+    } else {
+      emptyState.classList.add('hidden');
+      const isFiltering = !!(state.searchTerm.trim() || state.filterChangedOnly);
+      tbody.innerHTML = groups.map(g => campaignGroupHtml(g, isFiltering)).join('');
+    }
   } else {
-    tbody.innerHTML = rows.map(r => rowHtmlHistory(r)).join('');
+    const term = state.searchTerm.trim().toLowerCase();
+    let rows = state.historyRows.slice();
+    if (term) {
+      rows = rows.filter(r => (r.campaign_name || '').toLowerCase().includes(term) || (r.adset_name || '').toLowerCase().includes(term) || (r.adset_id || '').toLowerCase().includes(term));
+    }
+    const groups = buildCampaignGroups(rows);
+    groups.sort((a, b) => a.campaign_name.localeCompare(b.campaign_name, 'ko'));
+
+    if (!groups.length) {
+      tbody.innerHTML = '';
+      emptyState.classList.remove('hidden');
+    } else {
+      emptyState.classList.add('hidden');
+      const isFiltering = !!term;
+      tbody.innerHTML = groups.map(g => campaignGroupHistoryHtml(g, isFiltering)).join('');
+    }
   }
   updateStatsBar();
   updateBulkSaveButton();
+}
+
+function campaignGroupHtml(group, forceExpand) {
+  const isOpen = forceExpand || state.allExpanded || state.expandedCampaigns.has(group.campaign_name);
+  const sums = group.adsets.reduce((acc, r) => {
+    const m = state.metrics.get(r.adset_id) || {};
+    acc.yesterday = addMetricSums(acc.yesterday, m.yesterday || { spend: 0, purchases: 0, revenue: 0 });
+    acc.today = addMetricSums(acc.today, m.today || { spend: 0, purchases: 0, revenue: 0 });
+    acc.period = addMetricSums(acc.period, m.period || { spend: 0, purchases: 0, revenue: 0 });
+    return acc;
+  }, { yesterday: { spend: 0, purchases: 0, revenue: 0 }, today: { spend: 0, purchases: 0, revenue: 0 }, period: { spend: 0, purchases: 0, revenue: 0 } });
+
+  const y = deriveMetric(sums.yesterday);
+  const t = deriveMetric(sums.today);
+  const p = deriveMetric(sums.period);
+
+  const headerRow = `
+  <tr class="campaign-row bg-slate-50 font-medium" data-campaign="${escAttr(group.campaign_name)}">
+    <td class="px-3 py-2 sticky left-0 bg-slate-50 z-[1]">
+      <span class="chevron ${isOpen ? 'open' : ''} text-slate-400 mr-1.5">▶</span>
+      <span class="text-slate-800">${esc(group.campaign_name)}</span>
+      <span class="text-slate-400 text-xs font-normal ml-1.5">(${group.adsets.length}개 세트)</span>
+    </td>
+    <td class="px-2 py-2 text-right font-mono grp-border-l">${fmtNum(y.spend)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtNum(y.purchases)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtPct(y.roas)}</td>
+    <td class="px-2 py-2 text-right font-mono">${y.cpa !== null ? fmtNum(Math.round(y.cpa)) : '-'}</td>
+    <td class="px-2 py-2 text-right font-mono grp-border-l">${fmtNum(t.spend)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtNum(t.purchases)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtPct(t.roas)}</td>
+    <td class="px-2 py-2 text-right font-mono">${t.cpa !== null ? fmtNum(Math.round(t.cpa)) : '-'}</td>
+    <td class="px-2 py-2 text-right font-mono grp-border-l">${fmtNum(p.spend)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtNum(p.purchases)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtPct(p.roas)}</td>
+    <td class="px-2 py-2 text-right font-mono">${p.cpa !== null ? fmtNum(Math.round(p.cpa)) : '-'}</td>
+    <td class="px-2 py-2 text-right text-slate-300 grp-border-l">-</td>
+    <td class="px-2 py-2 text-right text-slate-300">-</td>
+    <td class="px-2 py-2 text-slate-300">-</td>
+    <td class="px-2 py-2 text-center text-slate-300">-</td>
+    <td class="px-2 py-2 text-center text-slate-300">-</td>
+  </tr>`;
+
+  const childRows = isOpen ? group.adsets.map(r => rowHtmlEditable(r)).join('') : '';
+  return headerRow + childRows;
 }
 
 function rowHtmlEditable(r) {
@@ -696,42 +882,73 @@ function rowHtmlEditable(r) {
         ? `<span class="text-emerald-600 text-xs font-medium">✓ 저장됨</span>`
         : `<span class="text-slate-300 text-xs">-</span>`);
 
+  const m = state.metrics.get(r.adset_id) || {};
+  const y = deriveMetric(m.yesterday);
+  const t = deriveMetric(m.today);
+  const p = deriveMetric(m.period);
+
   return `
-  <tr data-adset-id="${escAttr(r.adset_id)}" class="${dirtyCls} ${savedCls} hover:bg-slate-50 transition-colors">
-    <td class="px-3 py-1.5 sticky left-0 bg-white ${r.dirty ? 'row-dirty' : ''} z-[1] max-w-[200px] truncate" title="${escAttr(r.campaign_name)}">${esc(r.campaign_name) || '<span class="text-slate-300">-</span>'}</td>
-    <td class="px-3 py-1.5 max-w-[220px] truncate" title="${escAttr(r.adset_name)}">${esc(r.adset_name) || '<span class="text-slate-300">-</span>'}</td>
-    <td class="px-3 py-1.5 text-right font-mono text-slate-600">${fmtNum(r.spend)}</td>
-    <td class="px-3 py-1.5 text-right font-mono text-slate-500">${fmtNum(r.initial_budget)}</td>
-    <td class="px-3 py-1.5 text-right">
+  <tr data-adset-id="${escAttr(r.adset_id)}" data-campaign="${escAttr(r.campaign_name)}" class="${dirtyCls} ${savedCls} hover:bg-slate-50 transition-colors">
+    <td class="px-3 py-1.5 pl-9 sticky left-0 bg-white ${r.dirty ? 'row-dirty' : ''} z-[1] max-w-[280px] truncate" title="${escAttr(r.adset_name)}">${esc(r.adset_name) || '<span class="text-slate-300">-</span>'}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-600 grp-border-l">${fmtNum(y.spend)}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-600">${fmtNum(y.purchases)}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-600">${fmtPct(y.roas)}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-600">${y.cpa !== null ? fmtNum(Math.round(y.cpa)) : '-'}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-500 grp-border-l">${fmtNum(t.spend)}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-500">${fmtNum(t.purchases)}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-500">${fmtPct(t.roas)}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-500">${t.cpa !== null ? fmtNum(Math.round(t.cpa)) : '-'}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-600 grp-border-l">${fmtNum(p.spend)}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-600">${fmtNum(p.purchases)}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-600">${fmtPct(p.roas)}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-600">${p.cpa !== null ? fmtNum(Math.round(p.cpa)) : '-'}</td>
+    <td class="px-2 py-1.5 text-right font-mono text-slate-500 grp-border-l">${fmtNum(r.initial_budget)}</td>
+    <td class="px-2 py-1.5 text-right">
       <input type="number" inputmode="numeric" data-field="adjusted_budget"
         class="adj-input w-28 text-right border border-slate-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
         placeholder="${fmtNum(r.initial_budget)}"
         value="${r.adjusted_budget !== null && r.adjusted_budget !== undefined ? r.adjusted_budget : ''}" />
     </td>
-    <td class="px-3 py-1.5">
+    <td class="px-2 py-1.5">
       <input type="text" data-field="memo"
         class="memo-input w-full border border-slate-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
         placeholder="메모 입력..."
         value="${escAttr(r.memo || '')}" />
     </td>
-    <td class="px-3 py-1.5 text-center">${statusHtml}</td>
-    <td class="px-3 py-1.5 text-center">
+    <td class="px-2 py-1.5 text-center">${statusHtml}</td>
+    <td class="px-2 py-1.5 text-center">
       <button data-action="save-row" class="save-row-btn text-xs px-2 py-1 rounded-md border border-slate-300 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed" ${r.dirty ? '' : 'disabled'}>저장</button>
     </td>
   </tr>`;
 }
 
+function campaignGroupHistoryHtml(group, forceExpand) {
+  const isOpen = forceExpand || state.allExpanded || state.expandedCampaigns.has(group.campaign_name);
+  const totalSpend = group.adsets.reduce((s, r) => s + (Number(r.spend) || 0), 0);
+  const headerRow = `
+  <tr class="campaign-row bg-slate-50 font-medium" data-campaign="${escAttr(group.campaign_name)}">
+    <td class="px-3 py-2 sticky left-0 bg-slate-50 z-[1]">
+      <span class="chevron ${isOpen ? 'open' : ''} text-slate-400 mr-1.5">▶</span>
+      <span class="text-slate-800">${esc(group.campaign_name)}</span>
+      <span class="text-slate-400 text-xs font-normal ml-1.5">(${group.adsets.length}개 세트)</span>
+    </td>
+    <td class="px-3 py-2 text-right font-mono">${fmtNum(totalSpend)}</td>
+    <td class="px-3 py-2 text-right text-slate-300">-</td>
+    <td class="px-3 py-2 text-right text-slate-300">-</td>
+    <td class="px-3 py-2 text-slate-300">-</td>
+  </tr>`;
+  const childRows = isOpen ? group.adsets.map(r => rowHtmlHistory(r)).join('') : '';
+  return headerRow + childRows;
+}
+
 function rowHtmlHistory(r) {
   return `
   <tr class="hover:bg-slate-50">
-    <td class="px-3 py-1.5 sticky left-0 bg-white z-[1] max-w-[200px] truncate" title="${escAttr(r.campaign_name)}">${esc(r.campaign_name) || '-'}</td>
-    <td class="px-3 py-1.5 max-w-[220px] truncate" title="${escAttr(r.adset_name)}">${esc(r.adset_name) || '-'}</td>
+    <td class="px-3 py-1.5 pl-9 sticky left-0 bg-white z-[1] max-w-[280px] truncate" title="${escAttr(r.adset_name)}">${esc(r.adset_name) || '-'}</td>
     <td class="px-3 py-1.5 text-right font-mono text-slate-600">${fmtNum(r.spend)}</td>
     <td class="px-3 py-1.5 text-right font-mono text-slate-500">${fmtNum(r.initial_budget)}</td>
     <td class="px-3 py-1.5 text-right font-mono font-medium text-slate-800">${fmtNum(r.adjusted_budget)}</td>
     <td class="px-3 py-1.5 text-slate-600">${esc(r.memo) || '<span class="text-slate-300">-</span>'}</td>
-    <td class="px-3 py-1.5 text-center text-slate-300 text-xs">조회전용</td>
-    <td class="px-3 py-1.5 text-center text-slate-300 text-xs">-</td>
   </tr>`;
 }
 
@@ -764,8 +981,26 @@ function updateBulkSaveButton() {
 }
 
 /* ==========================================================================
-   편집 이벤트 (input change -> dirty 표시)
+   캠페인 펼치기/접기, 편집 이벤트
    ========================================================================== */
+document.getElementById('tableBody').addEventListener('click', async (e) => {
+  const campaignRow = e.target.closest('tr.campaign-row');
+  if (campaignRow && !e.target.closest('[data-action]')) {
+    const name = campaignRow.dataset.campaign;
+    if (state.expandedCampaigns.has(name)) state.expandedCampaigns.delete(name);
+    else state.expandedCampaigns.add(name);
+    state.allExpanded = false;
+    renderTable();
+    return;
+  }
+  const btn = e.target.closest('[data-action="save-row"]');
+  if (btn) {
+    const tr = btn.closest('tr');
+    const adsetId = tr.dataset.adsetId;
+    await saveRow(adsetId);
+  }
+});
+
 document.getElementById('tableBody').addEventListener('input', (e) => {
   const field = e.target.dataset.field;
   if (!field) return;
@@ -784,18 +1019,10 @@ document.getElementById('tableBody').addEventListener('input', (e) => {
   tr.classList.add('row-dirty');
   const saveBtn = tr.querySelector('.save-row-btn');
   if (saveBtn) saveBtn.disabled = false;
-  const statusCell = tr.children[6];
-  statusCell.innerHTML = `<span class="text-amber-600 text-xs font-medium">● 미저장</span>`;
+  const statusCell = tr.querySelector('td:nth-last-child(2)');
+  if (statusCell) statusCell.innerHTML = `<span class="text-amber-600 text-xs font-medium">● 미저장</span>`;
   updateStatsBar();
   updateBulkSaveButton();
-});
-
-document.getElementById('tableBody').addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-action="save-row"]');
-  if (!btn) return;
-  const tr = btn.closest('tr');
-  const adsetId = tr.dataset.adsetId;
-  await saveRow(adsetId);
 });
 
 /* ==========================================================================
@@ -917,7 +1144,26 @@ document.getElementById('btnFilterChanged').addEventListener('click', (e) => {
   renderTable();
 });
 
-document.getElementById('btnRefresh').addEventListener('click', () => loadDateData());
+document.getElementById('btnToggleAll').addEventListener('click', (e) => {
+  state.allExpanded = !state.allExpanded;
+  state.expandedCampaigns.clear();
+  e.target.textContent = state.allExpanded ? '전체 접기' : '전체 펼치기';
+  renderTable();
+});
+
+function applyPeriodDays(n) {
+  n = Math.min(90, Math.max(2, Math.round(Number(n)) || 7));
+  state.periodDays = n;
+  document.getElementById('periodDaysInput').value = n;
+  fetchMetrics().then(() => renderTable());
+}
+
+document.getElementById('periodDaysInput').addEventListener('change', (e) => applyPeriodDays(e.target.value));
+document.querySelectorAll('.period-preset').forEach(btn => {
+  btn.addEventListener('click', () => applyPeriodDays(btn.dataset.preset));
+});
+
+document.getElementById('btnRefresh').addEventListener('click', () => syncOperatingAdsetsFromSupabase().then(success => { if (!success) loadDateData(); }));
 document.getElementById('btnBulkSave').addEventListener('click', bulkSaveDirty);
 
 /* ==========================================================================
@@ -936,7 +1182,6 @@ document.getElementById('btnBulkSave').addEventListener('click', bulkSaveDirty);
   updateModeBadge();
   renderTable();
 
-  // 이전에 업로드했던 운영 세트 목록이 캐시되어 있으면 새로고침 후에도 유지
   const cached = loadCachedOperatingAdsets();
   if (cached) {
     state.operatingAdsets = cached;
@@ -945,9 +1190,10 @@ document.getElementById('btnBulkSave').addEventListener('click', bulkSaveDirty);
   }
 
   if (connected) {
-    // Supabase(meta_ad_performance)에서 자동 동기화 시도, 실패 시 캐시된 목록으로 대체
     syncOperatingAdsetsFromSupabase({ silent: true }).then(success => {
-      if (!success) loadDateData();
+      if (!success) {
+        fetchMetrics().then(() => loadDateData());
+      }
     });
   }
 })();
