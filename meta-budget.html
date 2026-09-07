@@ -727,21 +727,25 @@ async function loadTodayEditableData() {
   const rows = new Map();
   for (const a of state.operatingAdsets) {
     const existing = todayMap.get(a.adset_id);
+    const y = priorMap.get(a.adset_id);
+    const carriedInitial = y ? (y.adjusted_budget ?? y.initial_budget ?? 0) : 0;
     if (existing) {
+      // 오늘 기록이 이미 있어도 시작예산이 비어있거나(과거 버그로 0으로 저장된 경우 포함)
+      // 아직 채워지지 않았다면, 직전 저장 기록에서 자동으로 이어받습니다.
+      // (다음에 이 행을 저장하면 보정된 시작예산이 DB에도 반영됩니다.)
+      const existingInitial = Number(existing.initial_budget) || 0;
       rows.set(a.adset_id, {
         campaign_name: existing.campaign_name || a.campaign_name,
         adset_id: a.adset_id,
         adset_name: existing.adset_name || a.adset_name,
         spend: a.spend,
-        initial_budget: existing.initial_budget ?? 0,
+        initial_budget: existingInitial > 0 ? existingInitial : carriedInitial,
         adjusted_budget: existing.adjusted_budget,
         memo: existing.memo || '',
         savedToday: true,
         dirty: false,
       });
     } else {
-      const y = priorMap.get(a.adset_id);
-      const carriedInitial = y ? (y.adjusted_budget ?? y.initial_budget ?? 0) : 0;
       rows.set(a.adset_id, {
         campaign_name: a.campaign_name,
         adset_id: a.adset_id,
