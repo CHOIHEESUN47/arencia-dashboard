@@ -184,6 +184,11 @@
     </div>
   </div>
 
+  <!-- ===================== 예산 합계 ===================== -->
+  <div class="max-w-[1600px] w-full mx-auto px-4">
+    <div id="budgetTotalsBar" class="flex flex-wrap items-center gap-x-6 gap-y-1 bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2 text-sm text-indigo-900 mb-3"></div>
+  </div>
+
   <!-- ===================== Table ===================== -->
   <div class="max-w-[1600px] w-full mx-auto px-4 py-4 flex-1 min-h-0">
     <div id="tableWrap" class="bg-white border border-slate-200 rounded-xl overflow-hidden flex flex-col" style="height: calc(100vh - 240px);">
@@ -690,27 +695,34 @@ async function loadTodayEditableData() {
     return;
   }
   const today = state.selectedDate;
-  const yesterday = addDaysStr(today, -1); // 전일(예산 이관 기준일)은 항상 캘린더 기준 어제로 고정
+  // 시작예산 이관 기준일: 정확히 "어제"만 보면 주말/공휴일처럼 며칠 비어 있을 때
+  // (예: 월요일 기준 일요일엔 기록이 없음) 이관이 끊겨버리므로, 오늘 이전 날짜 중
+  // 가장 최근에 저장된 기록(최대 30일 이내)을 찾아서 그 조정예산을 이어받습니다.
+  const lookbackStart = addDaysStr(today, -30);
   const adsetIds = state.operatingAdsets.map(a => a.adset_id);
 
   let todayExisting = [];
-  let yestExisting = [];
+  let priorRows = [];
   try {
-    const [todayRes, yestRes] = await Promise.all([
+    const [todayRes, priorRes] = await Promise.all([
       state.supabase.from('daily_budgets').select('*').eq('date', today).in('adset_id', adsetIds),
-      state.supabase.from('daily_budgets').select('*').eq('date', yesterday).in('adset_id', adsetIds),
+      state.supabase.from('daily_budgets').select('*').lt('date', today).gte('date', lookbackStart).in('adset_id', adsetIds).order('date', { ascending: false }),
     ]);
     if (todayRes.error) throw todayRes.error;
-    if (yestRes.error) throw yestRes.error;
+    if (priorRes.error) throw priorRes.error;
     todayExisting = todayRes.data || [];
-    yestExisting = yestRes.data || [];
+    priorRows = priorRes.data || [];
   } catch (e) {
     console.error(e);
     toast('Supabase 조회 중 오류가 발생했습니다: ' + e.message, 'error');
   }
 
   const todayMap = new Map(todayExisting.map(r => [r.adset_id, r]));
-  const yestMap = new Map(yestExisting.map(r => [r.adset_id, r]));
+  // priorRows는 date desc로 정렬돼 있으므로, adset_id별로 처음 등장하는 행이 가장 최근 기록입니다.
+  const priorMap = new Map();
+  for (const r of priorRows) {
+    if (!priorMap.has(r.adset_id)) priorMap.set(r.adset_id, r);
+  }
 
   const rows = new Map();
   for (const a of state.operatingAdsets) {
@@ -728,7 +740,7 @@ async function loadTodayEditableData() {
         dirty: false,
       });
     } else {
-      const y = yestMap.get(a.adset_id);
+      const y = priorMap.get(a.adset_id);
       const carriedInitial = y ? (y.adjusted_budget ?? y.initial_budget ?? 0) : 0;
       rows.set(a.adset_id, {
         campaign_name: a.campaign_name,
@@ -858,6 +870,13 @@ function adjustedOrInitial(r) {
   return (r.adjusted_budget !== null && r.adjusted_budget !== undefined) ? Number(r.adjusted_budget) || 0 : (Number(r.initial_budget) || 0);
 }
 
+function computeGroupBudgetSums(group) {
+  return {
+    initial_budget: group.adsets.reduce((s, r) => s + (Number(r.initial_budget) || 0), 0),
+    adjusted_budget: group.adsets.reduce((s, r) => s + adjustedOrInitial(r), 0),
+  };
+}
+
 function todayRowSortEntry(r) {
   const m = state.metrics.get(r.adset_id) || {};
   const y = deriveMetric(m.yesterday);
@@ -879,8 +898,7 @@ function todayGroupSortEntry(group) {
     period_spend: p.spend, period_purchases: p.purchases, period_roas: p.roas, period_cpa: p.cpa,
     yesterday_spend: y.spend, yesterday_purchases: y.purchases, yesterday_roas: y.roas, yesterday_cpa: y.cpa,
     today_spend: t.spend, today_purchases: t.purchases, today_roas: t.roas, today_cpa: t.cpa,
-    initial_budget: group.adsets.reduce((s, r) => s + (Number(r.initial_budget) || 0), 0),
-    adjusted_budget: group.adsets.reduce((s, r) => s + adjustedOrInitial(r), 0),
+    ...computeGroupBudgetSums(group),
   };
 }
 function historyRowSortEntry(r) {
@@ -1034,12 +1052,14 @@ function renderTable() {
     }
   }
   updateStatsBar();
+  updateBudgetTotalsBar();
   updateBulkSaveButton();
 }
 
 function campaignGroupHtml(group, forceExpand) {
   const isOpen = forceExpand || state.allExpanded || state.expandedCampaigns.has(group.campaign_name);
   const { y, t, p } = computeGroupMetrics(group);
+  const budgetSums = computeGroupBudgetSums(group);
 
   const headerRow = `
   <tr class="campaign-row bg-slate-50 font-medium" data-campaign="${escAttr(group.campaign_name)}">
@@ -1060,8 +1080,8 @@ function campaignGroupHtml(group, forceExpand) {
     <td class="px-2 py-2 text-right font-mono">${fmtNum(t.purchases)}</td>
     <td class="px-2 py-2 text-right font-mono">${fmtPct(t.roas)}</td>
     <td class="px-2 py-2 text-right font-mono">${t.cpa !== null ? fmtNum(Math.round(t.cpa)) : '-'}</td>
-    <td class="px-2 py-2 text-right text-slate-300 grp-border-l">-</td>
-    <td class="px-2 py-2 text-right text-slate-300">-</td>
+    <td class="px-2 py-2 text-right font-mono text-slate-600 grp-border-l">${fmtNum(budgetSums.initial_budget)}</td>
+    <td class="px-2 py-2 text-right font-mono font-semibold text-slate-800">${fmtNum(budgetSums.adjusted_budget)}</td>
     <td class="px-2 py-2 text-slate-300">-</td>
     <td class="px-2 py-2 text-center text-slate-300">-</td>
     <td class="px-2 py-2 text-center text-slate-300">-</td>
@@ -1100,7 +1120,12 @@ function rowHtmlEditable(r) {
     <td class="px-2 py-1.5 text-right font-mono text-slate-500">${fmtNum(t.purchases)}</td>
     <td class="px-2 py-1.5 text-right font-mono text-slate-500">${fmtPct(t.roas)}</td>
     <td class="px-2 py-1.5 text-right font-mono text-slate-500">${t.cpa !== null ? fmtNum(Math.round(t.cpa)) : '-'}</td>
-    <td class="px-2 py-1.5 text-right font-mono text-slate-500 grp-border-l">${fmtNum(r.initial_budget)}</td>
+    <td class="px-2 py-1.5 text-right grp-border-l">
+      <input type="number" inputmode="numeric" data-field="initial_budget"
+        class="init-input w-24 text-right border border-slate-300 rounded-md px-2 py-1 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        placeholder="0"
+        value="${r.initial_budget !== null && r.initial_budget !== undefined ? r.initial_budget : ''}" />
+    </td>
     <td class="px-2 py-1.5 text-right">
       <input type="number" inputmode="numeric" data-field="adjusted_budget"
         class="adj-input w-28 text-right border border-slate-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -1170,6 +1195,35 @@ function updateStatsBar() {
   }
 }
 
+function updateBudgetTotalsBar() {
+  const el = document.getElementById('budgetTotalsBar');
+  if (!el) return;
+  if (state.isTodayMode) {
+    const arr = Array.from(state.rows.values());
+    const totalInitial = arr.reduce((s, r) => s + (Number(r.initial_budget) || 0), 0);
+    const totalAdjusted = arr.reduce((s, r) => s + adjustedOrInitial(r), 0);
+    const diff = totalAdjusted - totalInitial;
+    const diffHtml = diff === 0 ? '' : `<span class="text-xs ${diff > 0 ? 'text-rose-600' : 'text-emerald-600'} font-medium">(${diff > 0 ? '+' : ''}${fmtNum(diff)}원)</span>`;
+    el.innerHTML = `
+      <span class="font-semibold">📊 전체 메타 계정 예산 합계</span>
+      <span>세트 ${arr.length}개</span>
+      <span>시작예산 합계 <b class="font-mono">${fmtNum(totalInitial)}원</b></span>
+      <span>조정예산 합계 <b class="font-mono">${fmtNum(totalAdjusted)}원</b> ${diffHtml}</span>
+      <span class="text-xs text-indigo-400">캠페인별 합계는 각 캠페인 행에서 확인할 수 있어요</span>
+    `;
+  } else {
+    const arr = state.historyRows;
+    const totalInitial = arr.reduce((s, r) => s + (Number(r.initial_budget) || 0), 0);
+    const totalAdjusted = arr.reduce((s, r) => s + (Number(r.adjusted_budget) || 0), 0);
+    el.innerHTML = `
+      <span class="font-semibold">📊 ${state.selectedDate} 전체 계정 예산 합계</span>
+      <span>세트 ${arr.length}개</span>
+      <span>시작예산 합계 <b class="font-mono">${fmtNum(totalInitial)}원</b></span>
+      <span>조정예산 합계 <b class="font-mono">${fmtNum(totalAdjusted)}원</b></span>
+    `;
+  }
+}
+
 function updateBulkSaveButton() {
   const btn = document.getElementById('btnBulkSave');
   const countEl = document.getElementById('bulkCount');
@@ -1208,7 +1262,10 @@ document.getElementById('tableBody').addEventListener('input', (e) => {
   const row = state.rows.get(adsetId);
   if (!row) return;
 
-  if (field === 'adjusted_budget') {
+  if (field === 'initial_budget') {
+    const v = e.target.value;
+    row.initial_budget = v === '' ? 0 : Number(v);
+  } else if (field === 'adjusted_budget') {
     const v = e.target.value;
     row.adjusted_budget = v === '' ? null : Number(v);
   } else if (field === 'memo') {
