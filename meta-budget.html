@@ -981,6 +981,52 @@ function setupNameColResize() {
   });
 }
 
+/* ==========================================================================
+   합계(요약) 행 — 현재 필터에 걸려서 화면에 보이는 세트들 기준 총합
+   ========================================================================== */
+function todaySummaryRowHtml(filteredArr) {
+  const pseudoGroup = { adsets: filteredArr };
+  const { y, t, p } = computeGroupMetrics(pseudoGroup);
+  const budgets = computeGroupBudgetSums(pseudoGroup);
+  const campaignCount = new Set(filteredArr.map(r => r.campaign_name || '(캠페인명 없음)')).size;
+  return `
+  <tr class="bg-amber-50 text-slate-800 text-xs font-semibold border-b-2 border-amber-200">
+    <td class="px-3 py-2 sticky left-0 bg-amber-50 z-10 name-col">합계 (${campaignCount}개 캠페인 · ${filteredArr.length}개 세트)</td>
+    <td class="px-2 py-2 text-right font-mono grp-border-l">${fmtNum(p.spend)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtNum(p.purchases)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtPct(p.roas)}</td>
+    <td class="px-2 py-2 text-right font-mono">${p.cpa !== null ? fmtNum(Math.round(p.cpa)) : '-'}</td>
+    <td class="px-2 py-2 text-right font-mono grp-border-l">${fmtNum(y.spend)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtNum(y.purchases)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtPct(y.roas)}</td>
+    <td class="px-2 py-2 text-right font-mono">${y.cpa !== null ? fmtNum(Math.round(y.cpa)) : '-'}</td>
+    <td class="px-2 py-2 text-right font-mono grp-border-l">${fmtNum(t.spend)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtNum(t.purchases)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtPct(t.roas)}</td>
+    <td class="px-2 py-2 text-right font-mono">${t.cpa !== null ? fmtNum(Math.round(t.cpa)) : '-'}</td>
+    <td class="px-2 py-2 text-right font-mono grp-border-l">${fmtNum(budgets.initial_budget)}</td>
+    <td class="px-2 py-2 text-right font-mono">${fmtNum(budgets.adjusted_budget)}</td>
+    <td class="px-2 py-2">-</td>
+    <td class="px-2 py-2 text-center">-</td>
+    <td class="px-2 py-2 text-center">-</td>
+  </tr>`;
+}
+
+function historySummaryRowHtml(filteredArr) {
+  const totalSpend = filteredArr.reduce((s, r) => s + (Number(r.spend) || 0), 0);
+  const totalInitial = filteredArr.reduce((s, r) => s + (Number(r.initial_budget) || 0), 0);
+  const totalAdjusted = filteredArr.reduce((s, r) => s + (Number(r.adjusted_budget) || 0), 0);
+  const campaignCount = new Set(filteredArr.map(r => r.campaign_name || '(캠페인명 없음)')).size;
+  return `
+  <tr class="bg-amber-50 text-slate-800 text-xs font-semibold border-b-2 border-amber-200">
+    <td class="px-3 py-2 sticky left-0 bg-amber-50 z-10 name-col">합계 (${campaignCount}개 캠페인 · ${filteredArr.length}개 세트)</td>
+    <td class="px-3 py-2 text-right font-mono">${fmtNum(totalSpend)}</td>
+    <td class="px-3 py-2 text-right font-mono">${fmtNum(totalInitial)}</td>
+    <td class="px-3 py-2 text-right font-mono">${fmtNum(totalAdjusted)}</td>
+    <td class="px-3 py-2">-</td>
+  </tr>`;
+}
+
 function renderTableHead() {
   const thead = document.getElementById('tableHead');
   const n = state.periodDays;
@@ -989,6 +1035,7 @@ function renderTableHead() {
       const cls = ['px-2 py-2 text-right font-medium sortable', c.border ? 'grp-border-l' : ''].filter(Boolean).join(' ');
       return `<th class="${cls}" style="min-width:${c.minw}px" data-sort-key="${c.key}">${esc(c.label(n))}${sortArrowHtml(c.key)}</th>`;
     }).join('');
+    const filteredArr = getFilteredAdsetRows();
     thead.innerHTML = `
       <tr class="bg-slate-800 text-white text-xs">
         <th class="px-3 py-2 text-left font-medium sticky left-0 bg-slate-800 z-10 name-col relative sortable" data-sort-key="name">캠페인 / 세트${sortArrowHtml('name')}<span class="col-resize-handle" title="드래그해서 너비 조절"></span></th>
@@ -996,17 +1043,23 @@ function renderTableHead() {
         <th class="px-2 py-2 text-left font-medium min-w-[200px]">메모</th>
         <th class="px-2 py-2 text-center font-medium min-w-[90px]">상태</th>
         <th class="px-2 py-2 text-center font-medium min-w-[70px]">저장</th>
-      </tr>`;
+      </tr>
+      ${todaySummaryRowHtml(filteredArr)}`;
   } else {
     const cols = HISTORY_HEAD_COLUMNS.map(c =>
       `<th class="px-3 py-2 text-right font-medium sortable" style="min-width:${c.minw}px" data-sort-key="${c.key}">${esc(c.label)}${sortArrowHtml(c.key)}</th>`
     ).join('');
+    const term = state.searchTerm.trim().toLowerCase();
+    let filteredArr = state.historyRows.slice();
+    if (state.conversionOnly) filteredArr = filteredArr.filter(r => (r.campaign_name || '').includes('전환'));
+    if (term) filteredArr = filteredArr.filter(r => (r.campaign_name || '').toLowerCase().includes(term) || (r.adset_name || '').toLowerCase().includes(term) || (r.adset_id || '').toLowerCase().includes(term));
     thead.innerHTML = `
       <tr class="bg-slate-800 text-white text-xs">
         <th class="px-3 py-2 text-left font-medium sticky left-0 bg-slate-800 z-10 name-col relative sortable" data-sort-key="name">캠페인 / 세트${sortArrowHtml('name')}<span class="col-resize-handle" title="드래그해서 너비 조절"></span></th>
         ${cols}
         <th class="px-3 py-2 text-left font-medium min-w-[240px]">메모</th>
-      </tr>`;
+      </tr>
+      ${historySummaryRowHtml(filteredArr)}`;
   }
 }
 
